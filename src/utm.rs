@@ -447,6 +447,180 @@ where
     }
 }
 
+/// Step-by-step UTM interpreter state.
+pub struct UtmState {
+    pub state_bits: usize,
+    pub symbol_bits: usize,
+    blank_sym: u64,
+    accept_state: u64,
+    transitions: Vec<Transition>,
+    header_and_hash: Vec<UtmSym>,
+    pub cells: Vec<(u64, u64)>,
+    pub head_pos: usize,
+    pub current_state: u64,
+    pub halted: bool,
+    pub accepted: bool,
+    pub steps: u64,
+}
+
+impl UtmState {
+    pub fn new(encoded_tape: &[UtmSym]) -> Self {
+        let (state_bits, symbol_bits, blank_sym, accept_state, header_end) = parse_header(encoded_tape);
+        let hash_pos = encoded_tape.iter().position(|s| matches!(s, UtmSym::Hash))
+            .expect("no # in tape");
+        let transitions = parse_transition_table(&encoded_tape[header_end..hash_pos], state_bits, symbol_bits);
+        let cells = parse_data_cells(&encoded_tape[hash_pos + 1..], state_bits, symbol_bits);
+        let head_pos = cells.iter().position(|(st, _)| *st != 0).unwrap_or(0);
+        let current_state = cells.get(head_pos).map(|(s, _)| *s).unwrap_or(0);
+        let header_and_hash = encoded_tape[..=hash_pos].to_vec();
+
+        UtmState {
+            state_bits, symbol_bits, blank_sym, accept_state,
+            transitions, header_and_hash, cells, head_pos, current_state,
+            halted: false, accepted: false, steps: 0,
+        }
+    }
+
+    /// Step one simulated-machine step. Returns true if still running.
+    pub fn step(&mut self) -> bool {
+        if self.halted { return false; }
+
+        if self.current_state == 0 {
+            self.halted = true;
+            self.accepted = false;
+            return false;
+        }
+        if self.current_state == self.accept_state {
+            self.halted = true;
+            self.accepted = true;
+            return false;
+        }
+
+        let current_symbol = self.cells[self.head_pos].1;
+        let tr = self.transitions.iter()
+            .find(|t| t.cur_state == self.current_state && t.cur_symbol == current_symbol);
+
+        match tr {
+            None => {
+                self.cells[self.head_pos].0 = 0;
+                self.halted = true;
+                self.accepted = false;
+                return false;
+            }
+            Some(tr) => {
+                let new_state = tr.new_state;
+                let new_symbol = tr.new_symbol;
+                let direction = tr.direction;
+
+                self.cells[self.head_pos].1 = new_symbol;
+                self.cells[self.head_pos].0 = 0;
+
+                match direction {
+                    Dir::Left => {
+                        if self.head_pos == 0 {
+                            self.cells.insert(0, (0, self.blank_sym));
+                        } else {
+                            self.head_pos -= 1;
+                        }
+                    }
+                    Dir::Right => {
+                        self.head_pos += 1;
+                        if self.head_pos >= self.cells.len() {
+                            self.cells.push((0, self.blank_sym));
+                        }
+                    }
+                }
+
+                self.current_state = new_state;
+                self.cells[self.head_pos].0 = self.current_state;
+                self.steps += 1;
+            }
+        }
+        true
+    }
+
+    /// Rebuild the full tape from current state.
+    pub fn rebuild_tape(&self) -> Vec<UtmSym> {
+        rebuild_tape(&self.header_and_hash, &self.cells, self.state_bits, self.symbol_bits)
+    }
+
+    /// Get symbol at cell index, as u64 index.
+    pub fn cell_sym(&self, idx: usize) -> Option<u64> {
+        self.cells.get(idx).map(|(_, s)| *s)
+    }
+}
+
+/// Running state of a simulated TM, decoded from a UTM tape.
+#[derive(Debug, Clone)]
+pub struct DecodedState {
+    /// Current state index of the simulated TM (0 = reject).
+    pub state: u64,
+    /// Head position (index into data cells).
+    pub head_pos: usize,
+    /// Tape symbols as indices.
+    pub tape_syms: Vec<u64>,
+    /// Header params.
+    pub state_bits: usize,
+    pub symbol_bits: usize,
+    pub accept_state: u64,
+}
+
+/// Decode the running state from a raw UTM tape (which may contain marks).
+/// Works on any slice of UtmSym — the tape from TmState, run_utm_on mid-flight, etc.
+pub fn decode_running_state(tape: &[UtmSym]) -> Option<DecodedState> {
+    // Skip leading blanks
+    let start = tape.iter().position(|s| !matches!(s, UtmSym::Blank))?;
+    let tape = &tape[start..];
+
+    let (state_bits, symbol_bits, _blank_sym, accept_state, _header_end) = parse_header(tape);
+
+    // Find # (treating MarkLBracket as LBracket for scanning)
+    let hash_pos = tape.iter().position(|s| matches!(s, UtmSym::Hash))?;
+    let data = &tape[hash_pos + 1..];
+
+    // Parse data cells, tolerating marks
+    let cells = parse_data_cells_tolerant(data, state_bits, symbol_bits);
+
+    let head_pos = cells.iter().position(|(st, _)| *st != 0).unwrap_or(0);
+    let state = cells.get(head_pos).map(|(s, _)| *s).unwrap_or(0);
+    let tape_syms = cells.iter().map(|(_, sym)| *sym).collect();
+
+    Some(DecodedState {
+        state,
+        head_pos,
+        tape_syms,
+        state_bits,
+        symbol_bits,
+        accept_state,
+    })
+}
+
+/// Like parse_data_cells but tolerates MarkLBracket as LBracket.
+fn parse_data_cells_tolerant(data: &[UtmSym], state_bits: usize, symbol_bits: usize) -> Vec<(u64, u64)> {
+    let mut cells = Vec::new();
+    let mut i = 0;
+
+    while i < data.len() {
+        match data[i] {
+            UtmSym::LBracket | UtmSym::MarkLBracket => {
+                i += 1;
+                if i + state_bits + 1 + symbol_bits >= data.len() { break; }
+                let state_val = read_binary_at(data, &mut i, state_bits);
+                if i >= data.len() || !matches!(data[i], UtmSym::Pipe) { break; }
+                i += 1;
+                let sym_val = read_binary_at(data, &mut i, symbol_bits);
+                if i >= data.len() || !matches!(data[i], UtmSym::RBracket) { break; }
+                i += 1;
+                cells.push((state_val, sym_val));
+            }
+            UtmSym::Blank => break,
+            _ => break,
+        }
+    }
+
+    cells
+}
+
 // ===== UTM as a Turing Machine =====
 //
 // Build a TuringMachine<u32, UtmSym> that simulates any TM encoded with

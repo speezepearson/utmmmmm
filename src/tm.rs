@@ -30,6 +30,99 @@ pub struct RunResult<A> {
     pub tape: Vec<A>,
 }
 
+/// Mutable in-place TM execution state.
+pub struct TmState<S, A> {
+    pub state: S,
+    pub tape: HashMap<i64, A>,
+    pub head: i64,
+    pub min_pos: i64,
+    pub max_pos: i64,
+    pub halted: bool,
+    pub outcome: Option<Outcome>,
+    pub steps: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum StepResult {
+    Continue,
+    Halted,
+}
+
+impl<S, A> TmState<S, A>
+where
+    S: Eq + Hash + Clone + Debug,
+    A: Eq + Hash + Clone + Debug,
+{
+    pub fn new(tm: &TuringMachine<S, A>, input: &[A]) -> Self {
+        let mut tape: HashMap<i64, A> = HashMap::new();
+        for (i, sym) in input.iter().enumerate() {
+            tape.insert(i as i64, sym.clone());
+        }
+        TmState {
+            state: tm.initial.clone(),
+            tape,
+            head: 0,
+            min_pos: 0,
+            max_pos: input.len().saturating_sub(1) as i64,
+            halted: false,
+            outcome: None,
+            steps: 0,
+        }
+    }
+
+    pub fn step(&mut self, tm: &TuringMachine<S, A>) -> StepResult {
+        if self.halted {
+            return StepResult::Halted;
+        }
+
+        if self.state == tm.accept {
+            self.halted = true;
+            self.outcome = Some(Outcome::Accept);
+            return StepResult::Halted;
+        }
+        if self.state == tm.reject {
+            self.halted = true;
+            self.outcome = Some(Outcome::Reject);
+            return StepResult::Halted;
+        }
+
+        let sym = self.tape.get(&self.head).cloned().unwrap_or_else(|| tm.blank.clone());
+        let (new_state, new_sym, dir) = tm
+            .transitions
+            .get(&(self.state.clone(), sym))
+            .unwrap_or_else(|| {
+                panic!(
+                    "No transition for ({:?}, {:?})",
+                    self.state,
+                    self.tape.get(&self.head).cloned().unwrap_or_else(|| tm.blank.clone())
+                )
+            })
+            .clone();
+
+        self.tape.insert(self.head, new_sym);
+        self.state = new_state;
+
+        match dir {
+            Dir::Left => self.head -= 1,
+            Dir::Right => self.head += 1,
+        }
+
+        self.min_pos = self.min_pos.min(self.head);
+        self.max_pos = self.max_pos.max(self.head);
+        self.steps += 1;
+
+        StepResult::Continue
+    }
+
+    pub fn read(&self, pos: i64, blank: &A) -> A {
+        self.tape.get(&pos).cloned().unwrap_or_else(|| blank.clone())
+    }
+
+    pub fn collect_tape(&self, blank: &A) -> Vec<A> {
+        collect_tape(&self.tape, blank, self.min_pos, self.max_pos)
+    }
+}
+
 /// Run a TM to completion (or until `max_steps` is exceeded).
 /// Returns `None` if the machine doesn't halt within `max_steps`.
 pub fn run<S, A>(tm: &TuringMachine<S, A>, input: &[A], max_steps: usize) -> Option<RunResult<A>>
