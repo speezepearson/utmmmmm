@@ -1,12 +1,14 @@
 import type { UtmSpec } from "./types";
 
 const allStates = ["TODO"] as const;
-export type UtmState = (typeof allStates)[number];
+export type MyUtmState = (typeof allStates)[number];
 
 const allSymbols = ["TODO"] as const;
-export type UtmSymbol = (typeof allSymbols)[number];
+export type MyUtmSymbol = (typeof allSymbols)[number];
 
-export const utmSpec: UtmSpec<UtmState, UtmSymbol> = {
+// This UTM specification should be **fully generic** and work for *any* TuringMachineSpec.
+// Even itself!
+export const myUtmSpec: UtmSpec<MyUtmState, MyUtmSymbol> = {
   allStates,
   allSymbols,
   initial: "TODO",

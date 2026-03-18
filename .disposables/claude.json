@@ -24,9 +24,7 @@
     "tengu_disable_bypass_permissions_mode": false,
     "tengu_claudeai_mcp_connectors": true,
     "tengu_pebble_leaf_prune": false,
-    "tengu_tool_search_unsupported_models": [
-      "haiku"
-    ],
+    "tengu_tool_search_unsupported_models": ["haiku"],
     "tengu_system_prompt_global_cache": true,
     "tengu_attribution_header": true,
     "enhanced_telemetry_beta": false,
