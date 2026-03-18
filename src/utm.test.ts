@@ -6,7 +6,7 @@ import { isDeepStrictEqual } from "node:util";
 
 describe("decode", () => {
   it("inverts encode", () => {
-    const tm = makeInitSnapshot(checkPalindromeSpec, ['a','b','b','a']);
+    const tm = makeInitSnapshot(checkPalindromeSpec, ["a", "b", "b", "a"]);
 
     const encoded = utmSpec.encode(tm);
     const decoded = utmSpec.decode(tm.spec, encoded);
@@ -20,7 +20,7 @@ describe("decode", () => {
   });
 
   it("returns original snapshot, then undefined, then stepped snapshot", () => {
-    const tm = makeInitSnapshot(checkPalindromeSpec, ['a','b','b','a']);
+    const tm = makeInitSnapshot(checkPalindromeSpec, ["a", "b", "b", "a"]);
     const utm = makeInitSnapshot(utmSpec, utmSpec.encode(tm));
 
     const snap0 = utmSpec.decode(tm.spec, utm.tape);
