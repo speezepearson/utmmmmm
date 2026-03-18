@@ -25,6 +25,32 @@ export const acceptImmediatelySpec: TuringMachineSpec<"init", "_"> = {
   },
 };
 
+export const rejectImmediatelySpec: TuringMachineSpec<"init", "_"> = {
+  allStates: ["init"] as const,
+  allSymbols: ["_"] as const,
+  initial: "init",
+  blank: "_",
+  rules: {
+    init: {
+      _: { type: "reject" },
+    },
+  },
+};
+
+export const flipBitsSpec: TuringMachineSpec<"init", "_" | '0' | '1'> = {
+  allStates: ["init"] as const,
+  allSymbols: ["_", "0", "1"] as const,
+  initial: "init",
+  blank: "_",
+  rules: {
+    init: {
+      _: { type: "accept" },
+      0: { type: "step", newState: "init", newSymbol: "1", dir: "R" },
+      1: { type: "step", newState: "init", newSymbol: "0", dir: "R" },
+    },
+  },
+};
+
 type PalState =
   | "start"
   | `going_right_a` // erased left char, scanning right (remembers which letter)

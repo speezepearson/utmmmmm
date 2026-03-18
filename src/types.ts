@@ -56,7 +56,8 @@ export function step<State extends string, Symbol extends string>(
   snapshot: TuringMachineSnapshot<State, Symbol>,
 ): "accept" | "reject" | "continue" {
   const { spec, state, tape, pos } = snapshot;
-  const rule = spec.rules[state][tape[pos]];
+  const symbol = pos < tape.length ? tape[pos] : spec.blank;
+  const rule = spec.rules[state][symbol];
   switch (rule.type) {
     case "accept":
       return "accept";
@@ -64,12 +65,28 @@ export function step<State extends string, Symbol extends string>(
       return "reject";
     case "step": {
       snapshot.state = rule.newState;
+      while (snapshot.tape.length <= pos) {
+        snapshot.tape.push(spec.blank);
+      }
       snapshot.tape[pos] = rule.newSymbol;
       if (rule.dir === "L" && pos === 0) {
         throw new Error("Can't step machine; already at left edge of tape");
       }
       snapshot.pos = { L: pos - 1, R: pos + 1 }[rule.dir];
       return "continue";
+    }
+  }
+}
+export function run<State extends string, Symbol extends string>(snapshot: TuringMachineSnapshot<State, Symbol>): "accept" | "reject" {
+  while (true) {
+    switch (step(snapshot)) {
+      case "accept":
+        return "accept";
+      case "reject":
+        return "reject";
+      case "continue":
+        // noop
+        break;
     }
   }
 }

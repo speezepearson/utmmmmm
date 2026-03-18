@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { makeInitSnapshot, step } from "./types";
+import { makeInitSnapshot, run, step } from "./types";
 import { utmSpec } from "./utm";
-import { checkPalindromeSpec } from "./toy-machines";
+import { acceptImmediatelySpec, checkPalindromeSpec, flipBitsSpec, rejectImmediatelySpec } from "./toy-machines";
 import { isDeepStrictEqual } from "node:util";
 
 describe("decode", () => {
@@ -18,8 +18,10 @@ describe("decode", () => {
       expect(decoded).toEqual(tm);
     }
   });
+});
 
-  it("returns original snapshot, then undefined, then stepped snapshot", () => {
+describe('rules', () => {
+  it("decodes to original snapshot, then undefined, then stepped snapshot", () => {
     const tm = makeInitSnapshot(checkPalindromeSpec, ["a", "b", "b", "a"]);
     const utm = makeInitSnapshot(utmSpec, utmSpec.encode(tm));
 
@@ -48,5 +50,22 @@ describe("decode", () => {
     const snap2 = utmSpec.decode(tm.spec, utm.tape);
     expect(snap2).not.toEqual(snap1);
     expect(snap2).toEqual(tm);
+  });
+
+  it('terminates with the same status as the simulated machine', () => {
+    expect(run(makeInitSnapshot(acceptImmediatelySpec, []))).toBe("accept");
+    expect(run(makeInitSnapshot(rejectImmediatelySpec, []))).toBe("reject");
+  });
+
+  it('terminates with the correct decoded tape', () => {
+    const tm = makeInitSnapshot(flipBitsSpec, ["0", "1", "0", "1", "1"]);
+    const utm = makeInitSnapshot(utmSpec, utmSpec.encode(tm));
+
+    expect(run(tm)).toBe("accept");
+    expect(tm.tape).toEqual(["1", "0", "1", "0", "0"]);
+
+    expect(run(utm)).toBe("accept");
+
+    expect(utmSpec.decode(tm.spec, utm.tape)).toEqual(tm);
   });
 });
