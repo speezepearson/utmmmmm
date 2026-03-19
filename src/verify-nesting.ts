@@ -1,51 +1,127 @@
-import { isDeepStrictEqual } from "node:util";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { makeInitUtmSnapshot, myUtmSpec } from "./my-utm-spec";
 import { flipBitsSpec } from "./toy-machines";
-import { getStatus, makeInitSnapshot, step } from "./types";
+import {
+  getStatus,
+  makeInitSnapshot,
+  step,
+  type TuringMachineSnapshot,
+} from "./types";
+import type { MyUtmState, MyUtmSymbol } from "./my-utm-spec";
+import { tmsEqual } from "./util";
+
+const SAVEPOINT_FILE = "verify-nesting.savepoint.json";
 
 function padN(n: number, width: number) {
-  return n.toString().padStart(width, ' ');
+  return n.toString().padStart(width, " ");
+}
+
+type Savepoint = {
+  steps: number;
+  innerSteps: number;
+  simulator: { state: string; tape: string[]; pos: number };
+  doubleSimulator: { state: string; tape: string[]; pos: number };
+};
+
+function snapshotToJson(s: TuringMachineSnapshot<string, string>) {
+  return { state: s.state, tape: s.tape.slice(), pos: s.pos };
+}
+
+function loadSnapshot(
+  spec: typeof myUtmSpec,
+  data: { state: string; tape: string[]; pos: number },
+): TuringMachineSnapshot<MyUtmState, MyUtmSymbol> {
+  return { spec, state: data.state, tape: data.tape as MyUtmSymbol[], pos: data.pos };
 }
 
 const expectedInnerSteps = (() => {
   const utm = makeInitUtmSnapshot(makeInitSnapshot(flipBitsSpec, ["0"]));
   let steps = 0;
-  while (getStatus(step(utm)) === 'running') {
+  while (getStatus(step(utm)) === "running") {
     steps++;
   }
   return steps;
 })();
 
-// TODO: load these states from temp.savepoint.json
-const simulator = makeInitUtmSnapshot(makeInitSnapshot(flipBitsSpec, ["0"]));
-const doubleSimulator = makeInitUtmSnapshot(simulator);
+let simulator: TuringMachineSnapshot<MyUtmState, MyUtmSymbol>;
+let doubleSimulator: TuringMachineSnapshot<MyUtmState, MyUtmSymbol>;
+let steps: number;
+let innerSteps: number;
+
+const loadArg = process.argv.includes("--load");
+if (loadArg && existsSync(SAVEPOINT_FILE)) {
+  const data: Savepoint = JSON.parse(readFileSync(SAVEPOINT_FILE, "utf-8"));
+  simulator = loadSnapshot(myUtmSpec, data.simulator);
+  doubleSimulator = loadSnapshot(myUtmSpec, data.doubleSimulator);
+  steps = data.steps;
+  innerSteps = data.innerSteps;
+  console.log(
+    `Loaded savepoint: steps=${steps}, innerSteps=${innerSteps}`,
+  );
+} else {
+  simulator = makeInitUtmSnapshot(makeInitSnapshot(flipBitsSpec, ["0"]));
+  doubleSimulator = makeInitUtmSnapshot(simulator);
+  steps = 0;
+  innerSteps = 0;
+}
 
 let lastInnerTickT = Date.now();
-let steps = 0;
-let innerSteps = 0;
 while (true) {
-  if (getStatus(step(doubleSimulator)) !== 'running') {
+  if (getStatus(step(doubleSimulator)) !== "running") {
     break;
   }
   const decoded = myUtmSpec.decode(myUtmSpec, doubleSimulator);
-  if (decoded && (decoded.pos !== simulator.pos)) {
+  if (decoded && decoded.pos !== simulator.pos) {
     innerSteps++;
     step(simulator);
-    if (!isDeepStrictEqual(simulator, decoded)) {
-        throw new Error("simulator and decoded are not equal");
+    if (!tmsEqual(simulator, decoded)) {
+      console.error("simulator and decoded are not equal!");
+      console.error(`  simulator.state = ${simulator.state}`);
+      console.error(`  decoded.state   = ${decoded.state}`);
+      console.error(`  simulator.pos   = ${simulator.pos}`);
+      console.error(`  decoded.pos     = ${decoded.pos}`);
+      console.error(`  simulator.tape.length = ${simulator.tape.length}`);
+      console.error(`  decoded.tape.length   = ${decoded.tape.length}`);
+      // Find first differing tape cell
+      const maxLen = Math.max(simulator.tape.length, decoded.tape.length);
+      for (let i = 0; i < maxLen; i++) {
+        const s = i < simulator.tape.length ? simulator.tape[i] : "<missing>";
+        const d = i < decoded.tape.length ? decoded.tape[i] : "<missing>";
+        if (s !== d) {
+          console.error(
+            `  first tape diff at index ${i}: simulator=${s}, decoded=${d}`,
+          );
+          break;
+        }
+      }
+      throw new Error("simulator and decoded are not equal");
     }
     const now = Date.now();
-    console.log(`[step=${padN(steps, 11)}] ticked the simulated machine! (dur=${padN(Math.round(now - lastInnerTickT), 4)}ms)`);
-    console.log(`${padN(innerSteps, 6)}/${padN(expectedInnerSteps, 6)} : ${decoded.tape.join("")} => ${myUtmSpec.decode(flipBitsSpec, decoded)?.tape.join("")}`);
-    console.log(Array(6+1+6+3+decoded.pos).fill(' ').join('') + `^ (state=${decoded.state})`);
+    console.log(
+      `[step=${padN(steps, 11)}] ticked the simulated machine! (dur=${padN(Math.round(now - lastInnerTickT), 4)}ms)`,
+    );
+    console.log(
+      `${padN(innerSteps, 6)}/${padN(expectedInnerSteps, 6)} : ${decoded.tape.join("")} => ${myUtmSpec.decode(flipBitsSpec, decoded)?.tape.join("")}`,
+    );
+    console.log(
+      Array(6 + 1 + 6 + 3 + decoded.pos)
+        .fill(" ")
+        .join("") + `^ (state=${decoded.state})`,
+    );
     lastInnerTickT = now;
   }
   steps++;
   if (steps > 1e11) {
-    throw new Error("doesn't look like we're getting anywhere")
+    throw new Error("doesn't look like we're getting anywhere");
   }
   if (steps % 1e7 === 0) {
-    // TODO: persist the simulator and doubleSimulator states to temp.savepoint.json
+    const savepoint: Savepoint = {
+      steps,
+      innerSteps,
+      simulator: snapshotToJson(simulator),
+      doubleSimulator: snapshotToJson(doubleSimulator),
+    };
+    writeFileSync(SAVEPOINT_FILE, JSON.stringify(savepoint));
   }
 }
 
