@@ -24,10 +24,14 @@ export function makeInitSnapshot<State extends string, Symbol extends string>(
   spec: TuringMachineSpec<State, Symbol>,
   tape: readonly Symbol[] = [],
 ): TuringMachineSnapshot<State, Symbol> {
+  const tapeCopy = tape.slice();
+  if (tapeCopy.length === 0) {
+    tapeCopy.push(spec.blank);
+  }
   return {
     spec,
     state: spec.initial,
-    tape: tape.slice(),
+    tape: tapeCopy,
     pos: 0,
   };
 }
@@ -45,8 +49,8 @@ export function copySnapshot<State extends string, Symbol extends string>(
 export function getRule<State extends string, Symbol extends string>(
   snapshot: TuringMachineSnapshot<State, Symbol>,
 ): [State, Symbol, Dir] | undefined {
-  while (snapshot.tape.length <= snapshot.pos) {
-    snapshot.tape.push(snapshot.spec.blank);
+  if (snapshot.pos >= snapshot.tape.length) {
+    throw new Error("head is beyond end of tape")
   }
   return snapshot.spec.rules
     .get(snapshot.state)
@@ -67,7 +71,7 @@ export function step<State extends string, Symbol extends string>(
   const rule = getRule(tm);
   if (!rule) return tm;
 
-  const pos = tm.pos;
+  const {spec, pos} = tm;
 
   const [newState, newSymbol, dir] = rule;
   tm.state = newState;
@@ -76,6 +80,9 @@ export function step<State extends string, Symbol extends string>(
     throw new Error("Can't step machine; already at left edge of tape");
   }
   tm.pos = { L: pos - 1, R: pos + 1 }[dir];
+  if (tm.tape.length <= tm.pos) {
+    tm.tape.push(spec.blank);
+  }
 
   return tm;
 }
