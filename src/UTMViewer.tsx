@@ -7,22 +7,14 @@ import {
 } from "./types";
 import { MyUtmSnapshot, myUtmSpec } from "./my-utm-spec";
 
-// Section layout: $#RULES#ACCEPT#STATE#TAPELEN#BLANK#TAPE
-type SectionName =
-  | "$"
-  | "rules"
-  | "accept states"
-  | "state"
-  | "tapelen"
-  | "blank"
-  | "tape";
+// Section layout: $#RULES#ACCEPT#STATE#BLANK#TAPE
+type SectionName = "$" | "rules" | "accept states" | "state" | "blank" | "tape";
 
 const SECTION_COLORS: Record<SectionName, string> = {
   $: "#78716c", // stone
   rules: "#6366f1", // indigo
   "accept states": "#16a34a", // green
   state: "#ea580c", // orange
-  tapelen: "#9333ea", // purple
   blank: "#db2777", // pink
   tape: "#0891b2", // cyan
 };
@@ -32,7 +24,6 @@ const SECTION_ORDER: SectionName[] = [
   "rules",
   "accept states",
   "state",
-  "tapelen",
   "blank",
   "tape",
 ];
