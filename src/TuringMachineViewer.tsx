@@ -42,20 +42,25 @@ function useTuringMachine<State extends string, Symbol extends string>(
     statusRef.current = status;
   }, [status]);
 
+  const stepOnce = useCallback((snap: TuringMachineSnapshot<State, Symbol>) => {
+    padTape(snap, spec.blank);
+    const st = getStatus(step(snap));
+    padTape(snap, spec.blank);
+    return st;
+  }, [spec.blank]);
+
   const doStep = useCallback(() => {
     if (statusRef.current !== "running") return;
     const next = copySnapshot(snapshotRef.current);
-    padTape(next, spec.blank);
-    const status = getStatus(step(next));
-    padTape(next, spec.blank);
+    const st = stepOnce(next);
     snapshotRef.current = next;
-    statusRef.current = status;
+    statusRef.current = st;
     setSnapshot(next);
-    setStatus(status);
-    if (status !== "running") {
+    setStatus(st);
+    if (st !== "running") {
       setPlaying(false);
     }
-  }, [spec.blank]);
+  }, [stepOnce]);
 
   const reset = useCallback(() => {
     const s = makeInitSnapshot(spec, initialTape);
@@ -65,11 +70,39 @@ function useTuringMachine<State extends string, Symbol extends string>(
     setPlaying(false);
   }, [spec, initialTape]);
 
+  const fpsRef = useRef(fps);
+  useEffect(() => { fpsRef.current = fps; }, [fps]);
+  const accumRef = useRef(0);
+
   useEffect(() => {
-    if (!playing) return;
-    const interval = setInterval(doStep, 1000 / fps);
+    if (!playing) {
+      accumRef.current = 0;
+      return;
+    }
+    const MAX_RENDER_FPS = 30;
+    const interval = setInterval(() => {
+      if (statusRef.current !== "running") return;
+      accumRef.current += fpsRef.current / MAX_RENDER_FPS;
+      const stepsThisFrame = Math.floor(accumRef.current);
+      accumRef.current -= stepsThisFrame;
+      if (stepsThisFrame === 0) return;
+
+      const snap = copySnapshot(snapshotRef.current);
+      let st: "accept" | "reject" | "running" = "running";
+      for (let i = 0; i < stepsThisFrame; i++) {
+        st = stepOnce(snap);
+        if (st !== "running") break;
+      }
+      snapshotRef.current = snap;
+      statusRef.current = st;
+      setSnapshot(snap);
+      setStatus(st);
+      if (st !== "running") {
+        setPlaying(false);
+      }
+    }, 1000 / MAX_RENDER_FPS);
     return () => clearInterval(interval);
-  }, [playing, fps, doStep]);
+  }, [playing, stepOnce]);
 
   return { snapshot, status, playing, setPlaying, fps, logFps, setLogFps, doStep, reset };
 }

@@ -176,7 +176,7 @@ export function UTMViewer<
   const [playing, setPlaying] = useState(false);
   const [logFps, setLogFps] = useState(Math.log10(5));
   const fps = Math.round(10 ** logFps);
-  const [logRadius, setLogRadius] = useState(3); // default: show all (10^3 = 1000)
+  const [logRadius, setLogRadius] = useState(5);
   const visibleRadius = Math.round(10 ** logRadius);
   const [stepCount, setStepCount] = useState(0);
 
@@ -188,17 +188,22 @@ export function UTMViewer<
   useEffect(() => { statusRef.current = utmStatus; }, [utmStatus]);
   useEffect(() => { lastDecodedRef.current = lastDecoded; }, [lastDecoded]);
 
+  const stepOnce = useCallback((snap: TuringMachineSnapshot<UState, USymbol>) => {
+    padTape(snap, utmSpec.blank);
+    const st = getStatus(step(snap));
+    padTape(snap, utmSpec.blank);
+    return st;
+  }, [utmSpec.blank]);
+
   const doStep = useCallback(() => {
     if (statusRef.current !== "running") return;
     const next = copySnapshot(utmRef.current);
-    padTape(next, utmSpec.blank);
-    const status = getStatus(step(next));
-    padTape(next, utmSpec.blank);
+    const st = stepOnce(next);
 
     utmRef.current = next;
-    statusRef.current = status;
+    statusRef.current = st;
     setUtmSnapshot(next);
-    setUtmStatus(status);
+    setUtmStatus(st);
     setStepCount((c) => c + 1);
 
     const decoded = utmSpec.decode(simSpec, next);
@@ -207,10 +212,10 @@ export function UTMViewer<
       setLastDecoded(decoded);
     }
 
-    if (status !== "running") {
+    if (st !== "running") {
       setPlaying(false);
     }
-  }, [utmSpec, simSpec]);
+  }, [utmSpec, simSpec, stepOnce]);
 
   const reset = useCallback(() => {
     const { utmSnapshot: snap, decoded } = makeInitial();
@@ -224,11 +229,52 @@ export function UTMViewer<
     setStepCount(0);
   }, [makeInitial]);
 
+  const fpsRef = useRef(fps);
+  useEffect(() => { fpsRef.current = fps; }, [fps]);
+  const accumRef = useRef(0);
+  const stepCountRef = useRef(0);
+  useEffect(() => { stepCountRef.current = stepCount; }, [stepCount]);
+
   useEffect(() => {
-    if (!playing) return;
-    const interval = setInterval(doStep, 1000 / fps);
+    if (!playing) {
+      accumRef.current = 0;
+      return;
+    }
+    const MAX_RENDER_FPS = 30;
+    const interval = setInterval(() => {
+      if (statusRef.current !== "running") return;
+      accumRef.current += fpsRef.current / MAX_RENDER_FPS;
+      const stepsThisFrame = Math.floor(accumRef.current);
+      accumRef.current -= stepsThisFrame;
+      if (stepsThisFrame === 0) return;
+
+      const snap = copySnapshot(utmRef.current);
+      let st: "accept" | "reject" | "running" = "running";
+      for (let i = 0; i < stepsThisFrame; i++) {
+        st = stepOnce(snap);
+        if (st !== "running") break;
+      }
+
+      utmRef.current = snap;
+      statusRef.current = st;
+      stepCountRef.current += stepsThisFrame;
+      setUtmSnapshot(snap);
+      setUtmStatus(st);
+      setStepCount(stepCountRef.current);
+
+      // Only decode once per render frame (on the final state)
+      const decoded = utmSpec.decode(simSpec, snap);
+      if (decoded) {
+        lastDecodedRef.current = decoded;
+        setLastDecoded(decoded);
+      }
+
+      if (st !== "running") {
+        setPlaying(false);
+      }
+    }, 1000 / MAX_RENDER_FPS);
     return () => clearInterval(interval);
-  }, [playing, fps, doStep]);
+  }, [playing, stepOnce, utmSpec, simSpec]);
 
   const halted = utmStatus !== "running";
 
@@ -250,7 +296,7 @@ export function UTMViewer<
   return (
     <div className="tm-viewer">
       <div className="utm-status-line">
-        UTM step: {stepCount} | UTM state: {utmSnapshot.state}
+        UTM step: {stepCount} | UTM state: {utmSnapshot.state} | head: {utmSnapshot.pos}
       </div>
 
       <TapeDisplay
