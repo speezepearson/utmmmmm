@@ -20,3 +20,18 @@ export function tmsEqual<State extends string, Symbol extends string>(a: TuringM
   if (!tapesEqual(a.tape, b.tape, a.spec.blank)) return false;
   return true;
 }
+
+export function must<T>(x: T | undefined): T {
+  if (x === undefined) {
+    throw new Error("expected non-undefined");
+  }
+  return x;
+}
+
+export function indexOf<T>(array: readonly T[], value: T, start?: number): number | undefined {
+  const index = array.indexOf(value, start);
+  if (index === -1) {
+    return undefined;
+  }
+  return index;
+}

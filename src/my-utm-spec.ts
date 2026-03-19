@@ -5,7 +5,7 @@ import {
   type TuringMachineSpec,
   type UtmSpec,
 } from "./types";
-
+import { indexOf, must } from "./util";
 // ════════════════════════════════════════════════════════════════════
 // UTM Alphabet
 // ════════════════════════════════════════════════════════════════════
@@ -185,29 +185,27 @@ function decode<SimState extends string, SimSymbol extends string>(
   const symBits = numBits(spec.allSymbols.length);
 
   // Find section separators (#)
-  const sectionStarts: number[] = [];
-  for (let i = 0; i < tape.length; i++) {
-    if (tape[i] === "#") sectionStarts.push(i);
-  }
   // Layout: $#RULES#ACC#STATE#TLEN#BLANK#TAPE → 6 # signs
-  if (sectionStarts.length < 6) return undefined;
+  const rulesStart = must(indexOf(tape, "#"))+1;
+  const accStart = must(indexOf(tape, "#", rulesStart))+1;
+  const stateStart = must(indexOf(tape, "#", accStart))+1;
+  const tlenStart = must(indexOf(tape, "#", stateStart))+1;
+  const blankStart = must(indexOf(tape, "#", tlenStart))+1;
+  const tapeSecStart = must(indexOf(tape, "#", blankStart))+1;
 
-  // STATE section: between 3rd and 4th #
-  const stateStart = sectionStarts[2] + 1;
-  const stateEnd = sectionStarts[3];
+  // STATE section
+  const stateEnd = must(indexOf(tape, "#", stateStart));
   const stateBitsArr = tape.slice(stateStart, stateEnd);
   if (stateBitsArr.length !== sBits) return undefined;
   const stIdx = fromBinary(stateBitsArr);
   if (stIdx >= spec.allStates.length) return undefined;
   const simState = spec.allStates[stIdx];
 
-  // TAPELEN section: between 4th and 5th #
-  const tlenStart = sectionStarts[3] + 1;
-  const tlenEnd = sectionStarts[4];
+  // TAPELEN section
+  const tlenEnd = must(indexOf(tape, "#", tlenStart));
   const tapeLen = fromBinary(tape.slice(tlenStart, tlenEnd));
 
-  // TAPE section: after 6th #
-  const tapeSecStart = sectionStarts[5] + 1;
+  // TAPE section
 
   // Parse cells
   const cells: SimSymbol[] = [];
