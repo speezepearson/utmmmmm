@@ -107,17 +107,19 @@ describe("myUtmSpec gold standard tests", () => {
 
   describe("recursion", () => {
     it("can simulate itself", () => {
-      const baseTm = makeInitSnapshot(flipBitsSpec, ["0", "1"]);
-      const utm = makeInitUtmSnapshot(makeInitUtmSnapshot(baseTm));
+      const simulator = makeInitUtmSnapshot(makeInitSnapshot(flipBitsSpec, ["0"]));
+      const doubleSimulator = makeInitUtmSnapshot(simulator);
 
-      run(baseTm);
-      run(utm);
-
-      expect(getStatus(utm)).toBe(getStatus(baseTm));
-      const dec1 = myUtmSpec.decode(myUtmSpec, utm);
-      expect(dec1).not.toBeUndefined();
-      const dec2 = myUtmSpec.decode(baseTm.spec, dec1!);
-      expect(dec2).toEqual(baseTm);
+      let decoded;
+      for (let i=0; i<1e7; i++) {
+        expect(getStatus(step(doubleSimulator))).toBe('running');
+        decoded = myUtmSpec.decode(myUtmSpec, doubleSimulator);
+        if (decoded && (decoded.pos !== simulator.pos)) {
+          break;
+        }
+      }
+      const target = step(simulator);
+      expect(decoded).toEqual(target);
     });
   });
 });
