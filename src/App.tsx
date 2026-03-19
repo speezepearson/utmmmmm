@@ -8,6 +8,7 @@ import {
 } from "./toy-machines";
 import "./App.css";
 import { makeInitSnapshot } from "./types";
+import { myUtmSpec } from "./my-utm-spec";
 
 function App() {
   const [tapeInput, setTapeInput] = useState("abba");
@@ -43,7 +44,9 @@ function App() {
       <h2 style={{ marginTop: "32px" }}>UTM Simulation</h2>
       <MyUTMViewer
         key={tapeInput + "-utm"}
-        initialSim={makeInitSnapshot(flipBitsSpec, ["0", "1"])}
+        initialSim={myUtmSpec.encode(
+          makeInitSnapshot(flipBitsSpec, ["0", "1"]),
+        )}
       />
     </div>
   );
