@@ -100,24 +100,13 @@ export type UtmSpec<
   ): USymbol[];
 
   /** Decodes the tape of a running UTM into a snapshot of the simulated machine. May return undefined if the UTM is mid-operation.
-   *
-   * Must have these properties:
-   * 1. For any snapshot: `decode(snapshot.spec, encode(snapshot)) === snapshot`
-   * 2. For any snapshot:
-   *
-   *     const utmSnapshot = makeInitSnapshot(utmSpec, utmSpec.encode(snapshot))
-   *     assert(decode(snapshot.spec, encode(snapshot)) === snapshot)
-   *     while (true) {
-   *       step(utmSnapshot)
-   *       const decoded = decode(snapshot.spec, utmSnapshot.tape)
-   *       if (decoded !== undefined && decoded !== utmSnapshot) {
-   *         assert(decoded ===
-   *         break;
-   *       }
-   *     }
-   *    - then step that utm until `utmSpec.decode(snapshot.spec, utmSnapshot.tape)` returns a different snapshot
-   * Must have the property that, if we `encode` a snapshot, then repeatedly [step the UTM, decode the tape],
-   * we
+   * Should always yield the simulated TM's snapshots in-order: so if the simulated TM is in state X, then steps to Y, then steps to Z,
+   * then, when we simulate it with a UTM, `decode()`ing the UTM's tape should return:
+   * - X for a while...
+   * - then optionally undefined for a while...
+   * - then Y for a while...
+   * - then optionally undefined for a while...
+   * - then Z for a while...
    */
   decode<SimState extends string, SimSymbol extends string>(
     spec: TuringMachineSpec<SimState, SimSymbol>,
