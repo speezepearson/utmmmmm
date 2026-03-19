@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { makeInitUtmSnapshot, myUtmSpec } from "./my-utm-spec";
 import { flipBitsSpec } from "./toy-machines";
 import {
+  copySnapshot,
   getStatus,
   makeInitSnapshot,
   step,
@@ -34,15 +35,6 @@ function loadSnapshot(
   return { spec, state: data.state, tape: data.tape as MyUtmSymbol[], pos: data.pos };
 }
 
-const expectedInnerSteps = (() => {
-  const utm = makeInitUtmSnapshot(makeInitSnapshot(flipBitsSpec, ["0"]));
-  let steps = 0;
-  while (getStatus(step(utm)) === "running") {
-    steps++;
-  }
-  return steps;
-})();
-
 let simulator: TuringMachineSnapshot<MyUtmState, MyUtmSymbol>;
 let doubleSimulator: TuringMachineSnapshot<MyUtmState, MyUtmSymbol>;
 let steps: number;
@@ -64,6 +56,15 @@ if (loadArg && existsSync(SAVEPOINT_FILE)) {
   steps = 0;
   innerSteps = 0;
 }
+
+const expectedInnerSteps = (() => {
+  const utm = copySnapshot(simulator);
+  let steps = 0;
+  while (getStatus(step(utm)) === "running") {
+    steps++;
+  }
+  return steps;
+})();
 
 let lastInnerTickT = Date.now();
 while (true) {
