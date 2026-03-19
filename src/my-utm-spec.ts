@@ -72,15 +72,6 @@ function fromBinary(bits: readonly MyUtmSymbol[]): number {
 //
 // TAPE: cells separated by , (inactive) or ^ (head position)
 //   Each cell is fixed-width binary-encoded symbol index
-//
-// Note: I dropped TAPELEN. Instead, decode will trim trailing blanks
-// to match the original tape length. Actually we need TAPELEN for
-// proper round-trip. Let me keep it.
-//
-// REVISED:
-// $#RULES#ACCEPTSTATES#STATE#TAPELEN#BLANK#,CELL0^CELL1,CELL2,...
-//
-// That's 6 # separators.
 
 // ════════════════════════════════════════════════════════════════════
 // Encode
@@ -137,12 +128,6 @@ function encode<SimState extends string, SimSymbol extends string>(
   result.push("#");
   result.push(...toBinary(stateIdx, sBits));
 
-  // TAPELEN section
-  result.push("#");
-  const tapeLen = tape.length;
-  const tlenBits = Math.max(1, Math.ceil(Math.log2(Math.max(2, tapeLen + 1))));
-  result.push(...toBinary(tapeLen, tlenBits));
-
   // BLANK section
   result.push("#");
   result.push(...toBinary(blankIdx, symBits));
@@ -185,12 +170,11 @@ function decode<SimState extends string, SimSymbol extends string>(
   const symBits = numBits(spec.allSymbols.length);
 
   // Find section separators (#)
-  // Layout: $#RULES#ACC#STATE#TLEN#BLANK#TAPE → 6 # signs
+  // Layout: $#RULES#ACC#STATE#BLANK#TAPE → 5 # signs
   const rulesStart = must(indexOf(tape, "#"))+1;
   const accStart = must(indexOf(tape, "#", rulesStart))+1;
   const stateStart = must(indexOf(tape, "#", accStart))+1;
-  const tlenStart = must(indexOf(tape, "#", stateStart))+1;
-  const blankStart = must(indexOf(tape, "#", tlenStart))+1;
+  const blankStart = must(indexOf(tape, "#", stateStart))+1;
   const tapeSecStart = must(indexOf(tape, "#", blankStart))+1;
 
   // STATE section
@@ -296,7 +280,7 @@ function buildUtmRules(): RuleMap {
   const ruleAll: MyUtmSymbol[] = [
     ...ruleInternals, ";", ".", "*",
   ];
-  // Data bits that appear in STATE, TAPELEN, BLANK, ACCEPTSTATES, cells
+  // Data bits that appear in STATE, BLANK, ACCEPTSTATES, cells
   const bits: MyUtmSymbol[] = ["0", "1"];
   const markedBits: MyUtmSymbol[] = ["X", "Y"];
   const bitsAndMarked: MyUtmSymbol[] = ["0", "1", "X", "Y"];
@@ -508,7 +492,7 @@ function buildUtmRules(): RuleMap {
   addRule(rules, st("cmp_sym_read"), "|", st("sym_match_cleanup"), "|", "R");
 
   // Carry symbol bit to head cell
-  // Need to pass: rest of rules → #ACC → #STATE → #TLEN → #BLANK → #TAPE → find ^
+  // Need to pass: rest of rules → #ACC → #STATE → #BLANK → #TAPE → find ^
   for (const c of ["0", "1"] as const) {
     const carry = st(`cmp_sym_c${c}`);
     scanRight(rules, carry, ruleAll);
@@ -524,15 +508,10 @@ function buildUtmRules(): RuleMap {
     scanRight(rules, s2, bitsAndMarked);
     addRule(rules, s2, "#", st(`cmp_sym_c${c}_s3`), "#", "R");
 
-    // Skip TLEN
+    // Skip BLANK
     const s3 = st(`cmp_sym_c${c}_s3`);
     scanRight(rules, s3, bits);
-    addRule(rules, s3, "#", st(`cmp_sym_c${c}_s4`), "#", "R");
-
-    // Skip BLANK
-    const s4 = st(`cmp_sym_c${c}_s4`);
-    scanRight(rules, s4, bits);
-    addRule(rules, s4, "#", st(`cmp_sym_c${c}_fh`), "#", "R");
+    addRule(rules, s3, "#", st(`cmp_sym_c${c}_fh`), "#", "R");
 
     // Find ^
     const fh = st(`cmp_sym_c${c}_fh`);
@@ -646,12 +625,7 @@ function buildUtmRules(): RuleMap {
   {
     const s3 = st("smc_s3");
     scanRight(rules, s3, bits);
-    addRule(rules, s3, "#", st("smc_s4"), "#", "R");
-  }
-  {
-    const s4 = st("smc_s4");
-    scanRight(rules, s4, bits);
-    addRule(rules, s4, "#", st("smc_fh"), "#", "R");
+    addRule(rules, s3, "#", st("smc_fh"), "#", "R");
   }
   {
     const fh = st("smc_fh");
@@ -791,7 +765,7 @@ function buildUtmRules(): RuleMap {
   addRule(rules, st("cp_nsym_read"), "1", st("cp_nsym_c1"), "Y", "R");
   addRule(rules, st("cp_nsym_read"), "|", st("cp_nsym_done"), "|", "L");
 
-  // Carry to head cell: skip rest of rules, ACC, STATE, TLEN, BLANK, into TAPE, find ^
+  // Carry to head cell: skip rest of rules, ACC, STATE, BLANK, into TAPE, find ^
   for (const c of ["0", "1"] as const) {
     const carry = st(`cp_nsym_c${c}`);
     scanRight(rules, carry, ruleAll);
@@ -807,11 +781,7 @@ function buildUtmRules(): RuleMap {
 
     const s3 = st(`cp_nsym_c${c}_s3`);
     scanRight(rules, s3, bits);
-    addRule(rules, s3, "#", st(`cp_nsym_c${c}_s4`), "#", "R");
-
-    const s4 = st(`cp_nsym_c${c}_s4`);
-    scanRight(rules, s4, bits);
-    addRule(rules, s4, "#", st(`cp_nsym_c${c}_fh`), "#", "R");
+    addRule(rules, s3, "#", st(`cp_nsym_c${c}_fh`), "#", "R");
 
     const fh = st(`cp_nsym_c${c}_fh`);
     scanRight(rules, fh, [...bitsAndMarked, ","]);
@@ -876,12 +846,7 @@ function buildUtmRules(): RuleMap {
   {
     const s3 = st("cp_nsym_rn_s3");
     scanRight(rules, s3, bits);
-    addRule(rules, s3, "#", st("cp_nsym_rn_s4"), "#", "R");
-  }
-  {
-    const s4 = st("cp_nsym_rn_s4");
-    scanRight(rules, s4, bits);
-    addRule(rules, s4, "#", st("cp_nsym_rn_fh"), "#", "R");
+    addRule(rules, s3, "#", st("cp_nsym_rn_fh"), "#", "R");
   }
   {
     const fh = st("cp_nsym_rn_fh");
@@ -945,7 +910,7 @@ function buildUtmRules(): RuleMap {
     addRule(rules, mr, "*", st("mr_nav"), ".", "R");
   }
   {
-    // Navigate to tape: skip rest of rules, ACC, STATE, TLEN, BLANK
+    // Navigate to tape: skip rest of rules, ACC, STATE, BLANK
     const nav = st("mr_nav");
     scanRight(rules, nav, [...ruleInternals, ";", "."]);
     addRule(rules, nav, "#", st("mr_s1"), "#", "R");
@@ -963,12 +928,7 @@ function buildUtmRules(): RuleMap {
   {
     const s3 = st("mr_s3");
     scanRight(rules, s3, bits);
-    addRule(rules, s3, "#", st("mr_s4"), "#", "R");
-  }
-  {
-    const s4 = st("mr_s4");
-    scanRight(rules, s4, bits);
-    addRule(rules, s4, "#", st("mr_find_head"), "#", "R");
+    addRule(rules, s3, "#", st("mr_find_head"), "#", "R");
   }
   {
     // Find ^
@@ -1022,8 +982,8 @@ function buildUtmRules(): RuleMap {
     seekHome(st("mr_ext_write_head"), st("mr_ext_home"));
   }
   {
-    // From $, skip to BLANK section: $#RULES#ACC#STATE#TLEN#BLANK
-    // That's 5 # signs to skip
+    // From $, skip to BLANK section: $#RULES#ACC#STATE#BLANK
+    // That's 4 # signs to skip
     const eh = st("mr_ext_home");
     addRule(rules, eh, "#", st("mr_ext_h1"), "#", "R");
   }
@@ -1043,13 +1003,7 @@ function buildUtmRules(): RuleMap {
     // Skip STATE
     const h3 = st("mr_ext_h3");
     scanRight(rules, h3, bits);
-    addRule(rules, h3, "#", st("mr_ext_h4"), "#", "R");
-  }
-  {
-    // Skip TLEN
-    const h4 = st("mr_ext_h4");
-    scanRight(rules, h4, bits);
-    addRule(rules, h4, "#", st("mr_ext_read_blank"), "#", "R");
+    addRule(rules, h3, "#", st("mr_ext_read_blank"), "#", "R");
   }
   {
     // Read BLANK bits one by one, mark, carry to end of tape
@@ -1118,12 +1072,7 @@ function buildUtmRules(): RuleMap {
   {
     const s3 = st("ml_s3");
     scanRight(rules, s3, bits);
-    addRule(rules, s3, "#", st("ml_s4"), "#", "R");
-  }
-  {
-    const s4 = st("ml_s4");
-    scanRight(rules, s4, bits);
-    addRule(rules, s4, "#", st("ml_find_head"), "#", "R");
+    addRule(rules, s3, "#", st("ml_find_head"), "#", "R");
   }
   {
     // Find ^
@@ -1345,7 +1294,7 @@ function buildUtmRules(): RuleMap {
 
 const rules = buildUtmRules();
 
-const allStates = ["accept","reject","init","init_skip","mark_rule","cmp_st_read","chk_acc_init","cmp_st_c0","cmp_st_c1","st_match_cleanup","cmp_st_c0_sk1","cmp_st_c0_find","cmp_st_ok","cmp_st_fail","cmp_st_c1_sk1","cmp_st_c1_find","cmp_st_nextbit","stm_go_left","stm_restore_rule","stm_goto_state","stm_gs_sk1","stm_restore_state","stm_back_to_rule","sym_skip_state","cmp_sym_read","stf_restore_state","stf_find_star","stf_restore_rule","stf_skip_rest","cmp_sym_c0","cmp_sym_c1","sym_match_cleanup","cmp_sym_c0_s1","cmp_sym_c0_s2","cmp_sym_c0_s3","cmp_sym_c0_s4","cmp_sym_c0_fh","cmp_sym_c0_fb","cmp_sym_ok","cmp_sym_fail","cmp_sym_c1_s1","cmp_sym_c1_s2","cmp_sym_c1_s3","cmp_sym_c1_s4","cmp_sym_c1_fh","cmp_sym_c1_fb","cmp_sym_nextbit","cmp_sym_nb2","symf_rest_head","symf_seek_star","symf_skip_st","symf_rest_sym","symf_deactivate","symf_skip_rest","smc_s1","smc_s2","smc_s3","smc_s4","smc_fh","smc_rest_head","smc_rest_done","smc_skip_st","smc_rest_sym","apply_read_nst","cp_nst_c0","cp_nst_c1","cp_nst_done","cp_nst_c0_s1","cp_nst_c0_w","cp_nst_ret","cp_nst_c1_s1","cp_nst_c1_w","cp_nst_next","cp_nst_next2","cp_nst_next3","cp_nst_rest_nav","cp_nst_rest_s1","cp_nst_rest_do","cp_nsym_seek","cp_nsym_nav","cp_nsym_nav2","cp_nsym_nav3","cp_nsym_read","cp_nsym_c0","cp_nsym_c1","cp_nsym_done","cp_nsym_c0_s1","cp_nsym_c0_s2","cp_nsym_c0_s3","cp_nsym_c0_s4","cp_nsym_c0_fh","cp_nsym_c0_fb","cp_nsym_ret","cp_nsym_c1_s1","cp_nsym_c1_s2","cp_nsym_c1_s3","cp_nsym_c1_s4","cp_nsym_c1_fh","cp_nsym_c1_fb","cp_nsym_fnext","cp_nsym_fn2","cp_nsym_fn3","cp_nsym_fn4","cp_nsym_rest_nav","cp_nsym_rn_s1","cp_nsym_rn_s2","cp_nsym_rn_s3","cp_nsym_rn_s4","cp_nsym_rn_fh","cp_nsym_rn_do","read_dir","rd_skip_to_dir","rd_sk2","rd_sk3","rd_sk4","rd_read","move_left","move_right","mr_nav","mr_s1","mr_s2","mr_s3","mr_s4","mr_find_head","mr_skip_cell","mr_place_head","mr_extend_init","done_seek_home","mr_ext_to_blank","mr_ext_write_head","mr_ext_home","mr_ext_h1","mr_ext_h2","mr_ext_h3","mr_ext_h4","mr_ext_read_blank","mr_ext_bc0","mr_ext_bc1","mr_ext_rest_blank","mr_ext_bc_ret","mr_ext_bc_next","ml_nav","ml_s1","ml_s2","ml_s3","ml_s4","ml_find_head","ml_mark","ml_restore","rej_final_home","chk_acc_c0","chk_acc_c1","chk_acc_c0_find","chk_acc_ok","chk_acc_fail_bit","chk_acc_c1_find","chk_acc_ok_acc","chk_acc_ok_find","chk_acc_ok_skip","accept_seek_home","chk_acc_rest_state","chk_acc_back2acc","chk_acc_into_acc","chk_acc_do_rest","chk_acc_do_rest2","chk_acc_next_entry","reject_seek_home","acc_rest_acc","acc_rest_state","acc_final_home","rej_rest_acc","rej_rest_state"] as const;
+const allStates = ["accept","reject","init","init_skip","mark_rule","cmp_st_read","chk_acc_init","cmp_st_c0","cmp_st_c1","st_match_cleanup","cmp_st_c0_sk1","cmp_st_c0_find","cmp_st_ok","cmp_st_fail","cmp_st_c1_sk1","cmp_st_c1_find","cmp_st_nextbit","stm_go_left","stm_restore_rule","stm_goto_state","stm_gs_sk1","stm_restore_state","stm_back_to_rule","sym_skip_state","cmp_sym_read","stf_restore_state","stf_find_star","stf_restore_rule","stf_skip_rest","cmp_sym_c0","cmp_sym_c1","sym_match_cleanup","cmp_sym_c0_s1","cmp_sym_c0_s2","cmp_sym_c0_s3","cmp_sym_c0_fh","cmp_sym_c0_fb","cmp_sym_ok","cmp_sym_fail","cmp_sym_c1_s1","cmp_sym_c1_s2","cmp_sym_c1_s3","cmp_sym_c1_fh","cmp_sym_c1_fb","cmp_sym_nextbit","cmp_sym_nb2","symf_rest_head","symf_seek_star","symf_skip_st","symf_rest_sym","symf_deactivate","symf_skip_rest","smc_s1","smc_s2","smc_s3","smc_fh","smc_rest_head","smc_rest_done","smc_skip_st","smc_rest_sym","apply_read_nst","cp_nst_c0","cp_nst_c1","cp_nst_done","cp_nst_c0_s1","cp_nst_c0_w","cp_nst_ret","cp_nst_c1_s1","cp_nst_c1_w","cp_nst_next","cp_nst_next2","cp_nst_next3","cp_nst_rest_nav","cp_nst_rest_s1","cp_nst_rest_do","cp_nsym_seek","cp_nsym_nav","cp_nsym_nav2","cp_nsym_nav3","cp_nsym_read","cp_nsym_c0","cp_nsym_c1","cp_nsym_done","cp_nsym_c0_s1","cp_nsym_c0_s2","cp_nsym_c0_s3","cp_nsym_c0_fh","cp_nsym_c0_fb","cp_nsym_ret","cp_nsym_c1_s1","cp_nsym_c1_s2","cp_nsym_c1_s3","cp_nsym_c1_fh","cp_nsym_c1_fb","cp_nsym_fnext","cp_nsym_fn2","cp_nsym_fn3","cp_nsym_fn4","cp_nsym_rest_nav","cp_nsym_rn_s1","cp_nsym_rn_s2","cp_nsym_rn_s3","cp_nsym_rn_fh","cp_nsym_rn_do","read_dir","rd_skip_to_dir","rd_sk2","rd_sk3","rd_sk4","rd_read","move_left","move_right","mr_nav","mr_s1","mr_s2","mr_s3","mr_find_head","mr_skip_cell","mr_place_head","mr_extend_init","done_seek_home","mr_ext_to_blank","mr_ext_write_head","mr_ext_home","mr_ext_h1","mr_ext_h2","mr_ext_h3","mr_ext_read_blank","mr_ext_bc0","mr_ext_bc1","mr_ext_rest_blank","mr_ext_bc_ret","mr_ext_bc_next","ml_nav","ml_s1","ml_s2","ml_s3","ml_find_head","ml_mark","ml_restore","rej_final_home","chk_acc_c0","chk_acc_c1","chk_acc_c0_find","chk_acc_ok","chk_acc_fail_bit","chk_acc_c1_find","chk_acc_ok_acc","chk_acc_ok_find","chk_acc_ok_skip","accept_seek_home","chk_acc_rest_state","chk_acc_back2acc","chk_acc_into_acc","chk_acc_do_rest","chk_acc_do_rest2","chk_acc_next_entry","reject_seek_home","acc_rest_acc","acc_rest_state","acc_final_home","rej_rest_acc","rej_rest_state"] as const;
 
 export type MyUtmState = (typeof allStates)[number];
 
