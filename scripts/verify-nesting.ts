@@ -1,12 +1,11 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { flipBitsSpec } from "../src/toy-machines";
+import { copySnapshot, getStatus, makeInitSnapshot, step } from "../src/types";
 import {
-  copySnapshot,
-  getStatus,
-  makeInitSnapshot,
-  step,
-} from "../src/types";
-import { MyUtmSnapshot, type MyUtmState, type MyUtmSymbol } from "../src/my-utm-spec";
+  MyUtmSnapshot,
+  type MyUtmState,
+  type MyUtmSymbol,
+} from "../src/my-utm-spec";
 import { tmsEqual } from "../src/util";
 
 const SAVEPOINT_FILE = "verify-nesting.savepoint.json";
@@ -25,7 +24,10 @@ type Savepoint = {
   };
 };
 
-let simulator: MyUtmSnapshot<typeof flipBitsSpec['allStates'][number], typeof flipBitsSpec['allSymbols'][number]>;
+let simulator: MyUtmSnapshot<
+  (typeof flipBitsSpec)["allStates"][number],
+  (typeof flipBitsSpec)["allSymbols"][number]
+>;
 let doubleSimulator: MyUtmSnapshot<MyUtmState, MyUtmSymbol>;
 let steps: number;
 let innerSteps: number;
@@ -33,15 +35,15 @@ let innerSteps: number;
 const loadArg = process.argv.includes("--load");
 if (loadArg && existsSync(SAVEPOINT_FILE)) {
   const data: Savepoint = JSON.parse(readFileSync(SAVEPOINT_FILE, "utf-8"));
-  simulator = new MyUtmSnapshot({...data.simulator, simSpec: flipBitsSpec});
+  simulator = new MyUtmSnapshot({ ...data.simulator, simSpec: flipBitsSpec });
   doubleSimulator = MyUtmSnapshot.fromSimSnapshot(simulator);
   steps = data.steps;
   innerSteps = data.innerSteps;
-  console.log(
-    `Loaded savepoint: steps=${steps}, innerSteps=${innerSteps}`,
-  );
+  console.log(`Loaded savepoint: steps=${steps}, innerSteps=${innerSteps}`);
 } else {
-  simulator = MyUtmSnapshot.fromSimSnapshot(makeInitSnapshot(flipBitsSpec, ["0"]));
+  simulator = MyUtmSnapshot.fromSimSnapshot(
+    makeInitSnapshot(flipBitsSpec, ["0"]),
+  );
   doubleSimulator = MyUtmSnapshot.fromSimSnapshot(simulator);
   steps = 0;
   innerSteps = 0;
@@ -92,7 +94,7 @@ while (true) {
       `[step=${padN(steps, 11)}] ticked the simulated machine! (dur=${padN(Math.round(now - lastInnerTickT), 4)}ms)`,
     );
     console.log(
-      `${padN(innerSteps, 6)}/${padN(expectedInnerSteps, 6)} : ${decoded.tape.join("")} => ${new MyUtmSnapshot({...decoded, simSpec: flipBitsSpec}).tape.join("")}`,
+      `${padN(innerSteps, 6)}/${padN(expectedInnerSteps, 6)} : ${decoded.tape.join("")} => ${new MyUtmSnapshot({ ...decoded, simSpec: flipBitsSpec }).tape.join("")}`,
     );
     console.log(
       Array(6 + 1 + 6 + 3 + decoded.pos)

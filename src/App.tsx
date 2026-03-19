@@ -1,7 +1,11 @@
 import { useMemo, useState } from "react";
 import { TuringMachineViewer } from "./TuringMachineViewer";
 import { MyUTMViewer } from "./UTMViewer";
-import { checkPalindromeSpec, flipBitsSpec, write1sForeverSpec } from "./toy-machines";
+import {
+  checkPalindromeSpec,
+  flipBitsSpec,
+  write1sForeverSpec,
+} from "./toy-machines";
 import "./App.css";
 import { makeInitSnapshot } from "./types";
 

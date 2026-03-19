@@ -2,7 +2,10 @@ import { expect } from "vitest";
 import { tapesEqual } from "./util";
 import type { TuringMachineSnapshot } from "./types";
 
-export function expectTmsEqual<State extends string, Symbol extends string>(a: TuringMachineSnapshot<State, Symbol>, b: TuringMachineSnapshot<State, Symbol>): void {
+export function expectTmsEqual<State extends string, Symbol extends string>(
+  a: TuringMachineSnapshot<State, Symbol>,
+  b: TuringMachineSnapshot<State, Symbol>,
+): void {
   expect(a.spec).toBe(b.spec);
   expect(a.state).toBe(b.state);
   expect(a.pos).toBe(b.pos);

@@ -26,7 +26,9 @@ function useTuringMachine<State extends string, Symbol extends string>(
     padTape(s, spec.blank);
     return s;
   });
-  const [status, setStatus] = useState<"accept" | "reject" | "running">("running");
+  const [status, setStatus] = useState<"accept" | "reject" | "running">(
+    "running",
+  );
   const [playing, setPlaying] = useState(false);
   const [logFps, setLogFps] = useState(Math.log10(5));
   const fps = Math.round(10 ** logFps);
@@ -42,12 +44,15 @@ function useTuringMachine<State extends string, Symbol extends string>(
     statusRef.current = status;
   }, [status]);
 
-  const stepOnce = useCallback((snap: TuringMachineSnapshot<State, Symbol>) => {
-    padTape(snap, spec.blank);
-    const st = getStatus(step(snap));
-    padTape(snap, spec.blank);
-    return st;
-  }, [spec.blank]);
+  const stepOnce = useCallback(
+    (snap: TuringMachineSnapshot<State, Symbol>) => {
+      padTape(snap, spec.blank);
+      const st = getStatus(step(snap));
+      padTape(snap, spec.blank);
+      return st;
+    },
+    [spec.blank],
+  );
 
   const doStep = useCallback(() => {
     if (statusRef.current !== "running") return;
@@ -71,7 +76,9 @@ function useTuringMachine<State extends string, Symbol extends string>(
   }, [spec, initialTape]);
 
   const fpsRef = useRef(fps);
-  useEffect(() => { fpsRef.current = fps; }, [fps]);
+  useEffect(() => {
+    fpsRef.current = fps;
+  }, [fps]);
   const accumRef = useRef(0);
 
   useEffect(() => {
@@ -104,7 +111,17 @@ function useTuringMachine<State extends string, Symbol extends string>(
     return () => clearInterval(interval);
   }, [playing, stepOnce]);
 
-  return { snapshot, status, playing, setPlaying, fps, logFps, setLogFps, doStep, reset };
+  return {
+    snapshot,
+    status,
+    playing,
+    setPlaying,
+    fps,
+    logFps,
+    setLogFps,
+    doStep,
+    reset,
+  };
 }
 
 type TuringMachineViewerProps<State extends string, Symbol extends string> = {
@@ -116,8 +133,17 @@ export function TuringMachineViewer<
   State extends string,
   Symbol extends string,
 >({ spec, initialTape }: TuringMachineViewerProps<State, Symbol>) {
-  const { snapshot, status, playing, setPlaying, fps, logFps, setLogFps, doStep, reset } =
-    useTuringMachine(spec, initialTape);
+  const {
+    snapshot,
+    status,
+    playing,
+    setPlaying,
+    fps,
+    logFps,
+    setLogFps,
+    doStep,
+    reset,
+  } = useTuringMachine(spec, initialTape);
 
   const halted = status !== "running";
 

@@ -171,18 +171,24 @@ function decode<SimState extends string, SimSymbol extends string>(
 
   // Find section separators (#)
   // Layout: $#RULES#ACC#STATE#BLANK#TAPE → 5 # signs
-  const rulesStart = must(indexOf(tape, "#"))+1;
-  const accStart = must(indexOf(tape, "#", rulesStart))+1;
-  const stateStart = must(indexOf(tape, "#", accStart))+1;
-  const blankStart = must(indexOf(tape, "#", stateStart))+1;
-  const tapeSecStart = must(indexOf(tape, "#", blankStart))+1;
+  const rulesStart = must(indexOf(tape, "#")) + 1;
+  const accStart = must(indexOf(tape, "#", rulesStart)) + 1;
+  const stateStart = must(indexOf(tape, "#", accStart)) + 1;
+  const blankStart = must(indexOf(tape, "#", stateStart)) + 1;
+  const tapeSecStart = must(indexOf(tape, "#", blankStart)) + 1;
 
   // STATE section
   const stateEnd = must(indexOf(tape, "#", stateStart));
   const stateBitsArr = tape.slice(stateStart, stateEnd);
-  if (stateBitsArr.length !== sBits) throw new Error(`nonsensical decode: state bits length mismatch: ${stateBitsArr.length} !== ${sBits}`);
+  if (stateBitsArr.length !== sBits)
+    throw new Error(
+      `nonsensical decode: state bits length mismatch: ${stateBitsArr.length} !== ${sBits}`,
+    );
   const stIdx = fromBinary(stateBitsArr);
-  if (stIdx >= spec.allStates.length) throw new Error(`nonsensical decode: state index out of bounds: ${stIdx} >= ${spec.allStates.length}`);
+  if (stIdx >= spec.allStates.length)
+    throw new Error(
+      `nonsensical decode: state index out of bounds: ${stIdx} >= ${spec.allStates.length}`,
+    );
   const simState = spec.allStates[stIdx];
 
   // TAPE section
@@ -199,7 +205,10 @@ function decode<SimState extends string, SimSymbol extends string>(
     if (i + symBits > tape.length) break;
     const bits = tape.slice(i, i + symBits);
     const symIdx = fromBinary(bits);
-    if (symIdx >= spec.allSymbols.length) throw new Error(`nonsensical decode: symbol index out of bounds: ${symIdx} >= ${spec.allSymbols.length}`);
+    if (symIdx >= spec.allSymbols.length)
+      throw new Error(
+        `nonsensical decode: symbol index out of bounds: ${symIdx} >= ${spec.allSymbols.length}`,
+      );
     cells.push(spec.allSymbols[symIdx]);
     i += symBits;
   }
@@ -221,7 +230,10 @@ function decode<SimState extends string, SimSymbol extends string>(
 // UTM State Machine Builder
 // ════════════════════════════════════════════════════════════════════
 
-type RuleMap = Map<MyUtmState, Map<MyUtmSymbol, [MyUtmState, MyUtmSymbol, Dir]>>;
+type RuleMap = Map<
+  MyUtmState,
+  Map<MyUtmSymbol, [MyUtmState, MyUtmSymbol, Dir]>
+>;
 
 function addRule(
   rules: RuleMap,
@@ -273,13 +285,9 @@ function buildUtmRules(): RuleMap {
   st("reject");
 
   // Symbols that appear inside rule bodies (between ; separators)
-  const ruleInternals: MyUtmSymbol[] = [
-    "0", "1", "X", "Y", "|", "l", "d",
-  ];
+  const ruleInternals: MyUtmSymbol[] = ["0", "1", "X", "Y", "|", "l", "d"];
   // Everything scannable in the rules section
-  const ruleAll: MyUtmSymbol[] = [
-    ...ruleInternals, ";", ".", "*",
-  ];
+  const ruleAll: MyUtmSymbol[] = [...ruleInternals, ";", ".", "*"];
   // Data bits that appear in STATE, BLANK, ACCEPTSTATES, cells
   const bits: MyUtmSymbol[] = ["0", "1"];
   const markedBits: MyUtmSymbol[] = ["X", "Y"];
@@ -289,7 +297,20 @@ function buildUtmRules(): RuleMap {
   function seekHome(fromState: MyUtmState, toState: MyUtmState) {
     // Scan left past everything until we hit $
     scanLeft(rules, fromState, [
-      "0", "1", "X", "Y", "#", "|", ";", ",", "^", ".", "*", ">", "l", "d",
+      "0",
+      "1",
+      "X",
+      "Y",
+      "#",
+      "|",
+      ";",
+      ",",
+      "^",
+      ".",
+      "*",
+      ">",
+      "l",
+      "d",
     ]);
     addRule(rules, fromState, "$", toState, "$", "R");
   }
@@ -297,7 +318,18 @@ function buildUtmRules(): RuleMap {
   // Navigate from inside rules back to the * rule
   function seekStar(fromState: MyUtmState, targetState: MyUtmState) {
     scanLeft(rules, fromState, [
-      "0", "1", "X", "Y", "#", "|", ";", ",", "^", ".", "l", "d",
+      "0",
+      "1",
+      "X",
+      "Y",
+      "#",
+      "|",
+      ";",
+      ",",
+      "^",
+      ".",
+      "l",
+      "d",
     ]);
     addRule(rules, fromState, "*", targetState, "*", "R");
   }
@@ -383,8 +415,22 @@ function buildUtmRules(): RuleMap {
   // First restore rule state field: go back to * and restore X->0, Y->1
   {
     // We're at the start of the symbol field. Go left to find *
-    addRule(rules, st("st_match_cleanup"), "0", st("st_match_cleanup"), "0", "R");
-    addRule(rules, st("st_match_cleanup"), "1", st("st_match_cleanup"), "1", "R");
+    addRule(
+      rules,
+      st("st_match_cleanup"),
+      "0",
+      st("st_match_cleanup"),
+      "0",
+      "R",
+    );
+    addRule(
+      rules,
+      st("st_match_cleanup"),
+      "1",
+      st("st_match_cleanup"),
+      "1",
+      "R",
+    );
     // Actually we're past | already moving right into sym bits. We need to go left.
     // Let me re-approach. st_match_cleanup is entered when we see | and we're
     // moving right. But we want to go left to restore. Let me go left.
@@ -465,7 +511,15 @@ function buildUtmRules(): RuleMap {
   }
   {
     // Seek left to find * in rules
-    scanLeft(rules, st("stf_find_star"), [...bitsAndMarked, ";", "#", "|", ".", "l", "d"]);
+    scanLeft(rules, st("stf_find_star"), [
+      ...bitsAndMarked,
+      ";",
+      "#",
+      "|",
+      ".",
+      "l",
+      "d",
+    ]);
     addRule(rules, st("stf_find_star"), "*", st("stf_restore_rule"), ".", "R");
   }
   {
@@ -1293,30 +1347,212 @@ const rules = buildUtmRules();
 
 // The ~optimal order of states is computed by `npx tsx src/sort-utm-states-by-freq.ts`.
 // const allStates = ["accept","reject","mr_extend_init","mr_ext_to_blank","mr_ext_write_head","mr_ext_home","mr_ext_h1","mr_ext_h2","mr_ext_h3","mr_ext_read_blank","mr_ext_bc0","mr_ext_bc1","mr_ext_rest_blank","mr_ext_bc_ret","mr_ext_bc_next","rej_final_home","chk_acc_c1","chk_acc_fail_bit","chk_acc_c1_find","chk_acc_rest_state","chk_acc_back2acc","chk_acc_into_acc","chk_acc_do_rest","chk_acc_do_rest2","chk_acc_next_entry","reject_seek_home","rej_rest_acc","rej_rest_state","init_skip","init_seek_end","chk_acc_init","chk_acc_ok_find","accept_seek_home","acc_rest_acc","acc_rest_state","init","apply_read_nst","cp_nsym_read","rd_read","chk_acc_c0","chk_acc_c0_find","chk_acc_ok","chk_acc_ok_skip","ml_s3","ml_mark","ml_restore","mr_s3","mr_skip_cell","mr_place_head","chk_acc_ok_acc","cp_nsym_c0_fb","st_match_cleanup","stm_go_left","cmp_sym_read","ml_s1","ml_s2","mr_s1","mr_s2","smc_s3","smc_rest_head","smc_rest_sym","cp_nsym_nav2","cp_nsym_done","cp_nsym_rn_s3","cp_nsym_rn_do","rd_sk2","rd_sk4","cp_nsym_c1_fb","mr_find_head","cmp_sym_fail","cmp_sym_c1_fb","smc_s1","smc_s2","smc_skip_st","cp_nst_done","cp_nst_rest_s1","cp_nst_rest_do","cp_nsym_nav","cp_nsym_nav3","cp_nsym_rn_s1","cp_nsym_rn_s2","rd_skip_to_dir","rd_sk3","ml_find_head","cp_nsym_c0_s3","cp_nsym_c1_s3","move_left","cp_nsym_fn4","cp_nst_c1_w","symf_rest_head","symf_rest_sym","move_right","cmp_sym_c0_fb","cmp_sym_c1_s3","smc_fh","cp_nsym_rn_fh","cp_nsym_c0_s1","cp_nsym_c0_s2","cp_nsym_c1_s1","cp_nsym_c1_s2","cp_nsym_fn2","cp_nst_c0_w","cmp_sym_nb2","symf_skip_st","cp_nsym_c1_fh","cmp_sym_c1_s1","cmp_sym_c1_s2","cp_nst_c1_s1","cp_nsym_c0_fh","stm_restore_rule","stm_gs_sk1","stm_restore_state","sym_skip_state","cp_nsym_fnext","cp_nsym_fn3","cp_nst_next2","cmp_sym_c1_fh","cmp_sym_c0_s3","symf_deactivate","cp_nst_c0_s1","cp_nst_next3","cp_nst_next","cmp_sym_c0_s1","cmp_sym_c0_s2","cmp_sym_nextbit","symf_skip_rest","cmp_sym_c0_fh","cmp_st_c1_find","mark_rule","mark_rule_no_match","cmp_st_read","ml_nav","cmp_st_fail","acc_final_home","cmp_st_nextbit","cmp_st_c0_find","cmp_st_c1_sk1","mr_nav","cp_nsym_rest_nav","sym_match_cleanup","cp_nst_rest_nav","cp_nsym_seek","smc_rest_done","read_dir","stf_restore_state","stf_restore_rule","stf_go_prev","cmp_st_c0_sk1","cp_nsym_c0","symf_seek_star","cp_nsym_c1","stf_skip_rest","cp_nst_c1","cmp_sym_c1","stm_goto_state","stm_back_to_rule","cp_nsym_ret","done_seek_home","cmp_sym_c0","cp_nst_c0","cmp_sym_ok","cp_nst_ret","cmp_st_c1","cmp_st_ok","stf_find_star","cmp_st_c0"] as const;
-const allStates = ["acc_final_home","acc_rest_acc","acc_rest_state","accept","accept_seek_home","chk_acc_back2acc","chk_acc_c0","chk_acc_c0_find","chk_acc_c1","chk_acc_c1_find","chk_acc_do_rest","chk_acc_do_rest2","chk_acc_fail_bit","chk_acc_init","chk_acc_into_acc","chk_acc_next_entry","chk_acc_ok","chk_acc_ok_acc","chk_acc_ok_find","chk_acc_ok_skip","chk_acc_rest_state","mark_rule_no_match","ml_find_head","ml_mark","ml_nav","ml_restore","ml_s1","ml_s2","ml_s3","move_left","mr_ext_bc_next","mr_ext_bc_ret","mr_ext_bc0","mr_ext_bc1","mr_ext_h1","mr_ext_h2","mr_ext_h3","mr_ext_home","mr_ext_read_blank","mr_ext_rest_blank","mr_ext_to_blank","mr_ext_write_head","mr_extend_init","rej_final_home","rej_rest_acc","rej_rest_state","reject","reject_seek_home","stf_skip_rest","symf_skip_rest","init_skip","apply_read_nst","cp_nsym_read","init","rd_read","cp_nsym_c1_fb","cp_nsym_done","cp_nsym_nav2","cp_nsym_rn_do","cp_nsym_rn_s3","mr_place_head","mr_s3","mr_skip_cell","rd_sk2","rd_sk4","smc_rest_head","smc_rest_sym","smc_s3","cp_nsym_c0_fb","cp_nsym_c1_s3","cmp_sym_read","st_match_cleanup","stm_go_left","cp_nst_done","cp_nst_rest_do","cp_nst_rest_s1","cp_nsym_nav","cp_nsym_nav3","cp_nsym_rn_s1","cp_nsym_rn_s2","mr_s1","mr_s2","rd_sk3","rd_skip_to_dir","smc_s1","smc_s2","smc_skip_st","cp_nsym_c1_s1","cp_nsym_c1_s2","cmp_sym_c0_fb","cp_nsym_c0_s3","cmp_sym_fail","cp_nsym_fn4","cp_nst_c1_w","cp_nst_c0_w","cmp_sym_c1_fb","cp_nsym_fn2","cp_nsym_c0_s1","cp_nsym_c0_s2","move_right","cmp_sym_nb2","cp_nst_c1_s1","cp_nsym_fn3","cp_nsym_fnext","cp_nst_c0_s1","symf_rest_head","symf_rest_sym","cp_nst_next2","cmp_sym_c0_s3","cp_nst_next3","cmp_sym_c1_s3","symf_skip_st","cp_nst_next","stm_gs_sk1","stm_restore_rule","stm_restore_state","sym_skip_state","cmp_sym_c0_s1","cmp_sym_c0_s2","cmp_sym_c1_s1","cmp_sym_c1_s2","cmp_sym_nextbit","symf_deactivate","cmp_st_read","cmp_st_fail","cmp_st_c0_find","stf_go_prev","stf_restore_rule","stf_restore_state","cmp_st_c1_find","cmp_st_nextbit","cmp_st_c0_sk1","cp_nsym_rn_fh","mr_find_head","smc_fh","cp_nsym_c1_fh","cmp_st_c1_sk1","cp_nsym_rest_nav","cp_nst_rest_nav","sym_match_cleanup","mark_rule","mr_nav","cp_nsym_seek","cp_nsym_c1","cp_nsym_c0_fh","read_dir","smc_rest_done","cp_nsym_c0","cp_nst_c1","cp_nst_c0","cmp_sym_c0_fh","cmp_sym_c1_fh","init_seek_end","cp_nsym_ret","done_seek_home","cp_nst_ret","stm_goto_state","stm_back_to_rule","cmp_sym_c0","cmp_sym_c1","symf_seek_star","cmp_sym_ok","stf_find_star","cmp_st_c0","cmp_st_c1","cmp_st_ok"] as const;
+const allStates = [
+  "acc_final_home",
+  "acc_rest_acc",
+  "acc_rest_state",
+  "accept",
+  "accept_seek_home",
+  "chk_acc_back2acc",
+  "chk_acc_c0",
+  "chk_acc_c0_find",
+  "chk_acc_c1",
+  "chk_acc_c1_find",
+  "chk_acc_do_rest",
+  "chk_acc_do_rest2",
+  "chk_acc_fail_bit",
+  "chk_acc_init",
+  "chk_acc_into_acc",
+  "chk_acc_next_entry",
+  "chk_acc_ok",
+  "chk_acc_ok_acc",
+  "chk_acc_ok_find",
+  "chk_acc_ok_skip",
+  "chk_acc_rest_state",
+  "mark_rule_no_match",
+  "ml_find_head",
+  "ml_mark",
+  "ml_nav",
+  "ml_restore",
+  "ml_s1",
+  "ml_s2",
+  "ml_s3",
+  "move_left",
+  "mr_ext_bc_next",
+  "mr_ext_bc_ret",
+  "mr_ext_bc0",
+  "mr_ext_bc1",
+  "mr_ext_h1",
+  "mr_ext_h2",
+  "mr_ext_h3",
+  "mr_ext_home",
+  "mr_ext_read_blank",
+  "mr_ext_rest_blank",
+  "mr_ext_to_blank",
+  "mr_ext_write_head",
+  "mr_extend_init",
+  "rej_final_home",
+  "rej_rest_acc",
+  "rej_rest_state",
+  "reject",
+  "reject_seek_home",
+  "stf_skip_rest",
+  "symf_skip_rest",
+  "init_skip",
+  "apply_read_nst",
+  "cp_nsym_read",
+  "init",
+  "rd_read",
+  "cp_nsym_c1_fb",
+  "cp_nsym_done",
+  "cp_nsym_nav2",
+  "cp_nsym_rn_do",
+  "cp_nsym_rn_s3",
+  "mr_place_head",
+  "mr_s3",
+  "mr_skip_cell",
+  "rd_sk2",
+  "rd_sk4",
+  "smc_rest_head",
+  "smc_rest_sym",
+  "smc_s3",
+  "cp_nsym_c0_fb",
+  "cp_nsym_c1_s3",
+  "cmp_sym_read",
+  "st_match_cleanup",
+  "stm_go_left",
+  "cp_nst_done",
+  "cp_nst_rest_do",
+  "cp_nst_rest_s1",
+  "cp_nsym_nav",
+  "cp_nsym_nav3",
+  "cp_nsym_rn_s1",
+  "cp_nsym_rn_s2",
+  "mr_s1",
+  "mr_s2",
+  "rd_sk3",
+  "rd_skip_to_dir",
+  "smc_s1",
+  "smc_s2",
+  "smc_skip_st",
+  "cp_nsym_c1_s1",
+  "cp_nsym_c1_s2",
+  "cmp_sym_c0_fb",
+  "cp_nsym_c0_s3",
+  "cmp_sym_fail",
+  "cp_nsym_fn4",
+  "cp_nst_c1_w",
+  "cp_nst_c0_w",
+  "cmp_sym_c1_fb",
+  "cp_nsym_fn2",
+  "cp_nsym_c0_s1",
+  "cp_nsym_c0_s2",
+  "move_right",
+  "cmp_sym_nb2",
+  "cp_nst_c1_s1",
+  "cp_nsym_fn3",
+  "cp_nsym_fnext",
+  "cp_nst_c0_s1",
+  "symf_rest_head",
+  "symf_rest_sym",
+  "cp_nst_next2",
+  "cmp_sym_c0_s3",
+  "cp_nst_next3",
+  "cmp_sym_c1_s3",
+  "symf_skip_st",
+  "cp_nst_next",
+  "stm_gs_sk1",
+  "stm_restore_rule",
+  "stm_restore_state",
+  "sym_skip_state",
+  "cmp_sym_c0_s1",
+  "cmp_sym_c0_s2",
+  "cmp_sym_c1_s1",
+  "cmp_sym_c1_s2",
+  "cmp_sym_nextbit",
+  "symf_deactivate",
+  "cmp_st_read",
+  "cmp_st_fail",
+  "cmp_st_c0_find",
+  "stf_go_prev",
+  "stf_restore_rule",
+  "stf_restore_state",
+  "cmp_st_c1_find",
+  "cmp_st_nextbit",
+  "cmp_st_c0_sk1",
+  "cp_nsym_rn_fh",
+  "mr_find_head",
+  "smc_fh",
+  "cp_nsym_c1_fh",
+  "cmp_st_c1_sk1",
+  "cp_nsym_rest_nav",
+  "cp_nst_rest_nav",
+  "sym_match_cleanup",
+  "mark_rule",
+  "mr_nav",
+  "cp_nsym_seek",
+  "cp_nsym_c1",
+  "cp_nsym_c0_fh",
+  "read_dir",
+  "smc_rest_done",
+  "cp_nsym_c0",
+  "cp_nst_c1",
+  "cp_nst_c0",
+  "cmp_sym_c0_fh",
+  "cmp_sym_c1_fh",
+  "init_seek_end",
+  "cp_nsym_ret",
+  "done_seek_home",
+  "cp_nst_ret",
+  "stm_goto_state",
+  "stm_back_to_rule",
+  "cmp_sym_c0",
+  "cmp_sym_c1",
+  "symf_seek_star",
+  "cmp_sym_ok",
+  "stf_find_star",
+  "cmp_st_c0",
+  "cmp_st_c1",
+  "cmp_st_ok",
+] as const;
 
 export type MyUtmState = (typeof allStates)[number];
 
-export class MyUtmSnapshot<SimState extends string, SimSymbol extends string> implements UtmSnapshot<MyUtmState, MyUtmSymbol, SimState, SimSymbol> {
+export class MyUtmSnapshot<
+  SimState extends string,
+  SimSymbol extends string,
+> implements UtmSnapshot<MyUtmState, MyUtmSymbol, SimState, SimSymbol> {
   pos: number;
   state: MyUtmState;
   tape: MyUtmSymbol[];
   simSpec: TuringMachineSpec<SimState, SimSymbol>;
 
-  constructor({pos, state, tape, simSpec}:{
-    pos: number,
-    state: MyUtmState,
-    tape: MyUtmSymbol[],
-    simSpec: TuringMachineSpec<SimState, SimSymbol>,
+  constructor({
+    pos,
+    state,
+    tape,
+    simSpec,
+  }: {
+    pos: number;
+    state: MyUtmState;
+    tape: MyUtmSymbol[];
+    simSpec: TuringMachineSpec<SimState, SimSymbol>;
   }) {
     this.pos = pos;
     this.state = state;
     this.tape = tape.slice();
     this.simSpec = simSpec;
   }
-  
-  static fromSimSnapshot<SimState extends string, SimSymbol extends string>(simSnapshot: TuringMachineSnapshot<SimState, SimSymbol>): MyUtmSnapshot<SimState, SimSymbol> {
-    return new MyUtmSnapshot({pos: 0, state: myUtmSpec.initial, tape: encodeToTape(simSnapshot), simSpec: simSnapshot.spec});
+
+  static fromSimSnapshot<SimState extends string, SimSymbol extends string>(
+    simSnapshot: TuringMachineSnapshot<SimState, SimSymbol>,
+  ): MyUtmSnapshot<SimState, SimSymbol> {
+    return new MyUtmSnapshot({
+      pos: 0,
+      state: myUtmSpec.initial,
+      tape: encodeToTape(simSnapshot),
+      simSpec: simSnapshot.spec,
+    });
   }
 
   get spec() {

@@ -1,11 +1,7 @@
 import { describe, it } from "vitest";
 import { myUtmSpec } from "./my-utm-spec";
-import {
-  makeInitSnapshot,
-} from "./types";
-import {
-  checkPalindromeSpec,
-} from "./toy-machines";
+import { makeInitSnapshot } from "./types";
+import { checkPalindromeSpec } from "./toy-machines";
 
 describe("palindrome debug", () => {
   it("check encoded tape size", () => {
@@ -19,9 +15,11 @@ describe("palindrome debug", () => {
       if (encoded.tape[i] === "#") hashes.push(i);
     }
     console.log(`Section boundaries (#): ${hashes.join(", ")}`);
-    console.log(`RULES section: ${hashes[0]+1} to ${hashes[1]-1} (${hashes[1] - hashes[0] - 1} chars)`);
-    console.log(`ACC section: ${hashes[1]+1} to ${hashes[2]-1}`);
-    console.log(`STATE section: ${hashes[2]+1} to ${hashes[3]-1}`);
+    console.log(
+      `RULES section: ${hashes[0] + 1} to ${hashes[1] - 1} (${hashes[1] - hashes[0] - 1} chars)`,
+    );
+    console.log(`ACC section: ${hashes[1] + 1} to ${hashes[2] - 1}`);
+    console.log(`STATE section: ${hashes[2] + 1} to ${hashes[3] - 1}`);
 
     // Count rules (number of . or * prefixes)
     let ruleCount = 0;

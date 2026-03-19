@@ -1,6 +1,9 @@
 export type Dir = "L" | "R";
 
-export interface TuringMachineSpec<State extends string, Symbol extends string> {
+export interface TuringMachineSpec<
+  State extends string,
+  Symbol extends string,
+> {
   readonly allStates: ReadonlyArray<State>;
   readonly allSymbols: ReadonlyArray<Symbol>;
   readonly initial: State;
@@ -8,7 +11,7 @@ export interface TuringMachineSpec<State extends string, Symbol extends string> 
   readonly blank: Symbol;
   // Not necessarily total; machine halts when no rule is applicable
   readonly rules: ReadonlyMap<State, ReadonlyMap<Symbol, [State, Symbol, Dir]>>;
-};
+}
 
 export type TuringMachineSnapshot<
   State extends string,
@@ -50,7 +53,7 @@ export function getRule<State extends string, Symbol extends string>(
   snapshot: TuringMachineSnapshot<State, Symbol>,
 ): [State, Symbol, Dir] | undefined {
   if (snapshot.pos >= snapshot.tape.length) {
-    throw new Error("head is beyond end of tape")
+    throw new Error("head is beyond end of tape");
   }
   return snapshot.spec.rules
     .get(snapshot.state)
@@ -71,7 +74,7 @@ export function step<State extends string, Symbol extends string>(
   const rule = getRule(tm);
   if (!rule) return tm;
 
-  const {spec, pos} = tm;
+  const { spec, pos } = tm;
 
   const [newState, newSymbol, dir] = rule;
   tm.state = newState;
@@ -110,7 +113,12 @@ export type UtmSpec<
   ): UtmSnapshot<UState, USymbol, SimState, SimSymbol>;
 };
 
-export type UtmSnapshot<UState extends string, USymbol extends string, SimState extends string, SimSymbol extends string> = TuringMachineSnapshot<UState, USymbol> & {
+export type UtmSnapshot<
+  UState extends string,
+  USymbol extends string,
+  SimState extends string,
+  SimSymbol extends string,
+> = TuringMachineSnapshot<UState, USymbol> & {
   /** Decodes the tape of a running UTM into a snapshot of the simulated machine. May return undefined if the UTM is mid-operation.
    * Should always yield the simulated TM's snapshots in-order: so if the simulated TM is in state X, then steps to Y, then steps to Z,
    * then, when we simulate it with a UTM, `decode()`ing the UTM's tape should return:
@@ -119,8 +127,7 @@ export type UtmSnapshot<UState extends string, USymbol extends string, SimState 
    * - then (Z/undefined) for a while...
    */
   decode(): undefined | TuringMachineSnapshot<SimState, SimSymbol>;
-  
-}
+};
 
 export function assertNever(x: never): never {
   throw new Error(`Unexpected value: ${x}`);

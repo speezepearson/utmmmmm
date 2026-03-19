@@ -8,23 +8,38 @@ import {
 import { MyUtmSnapshot, myUtmSpec } from "./my-utm-spec";
 
 // Section layout: $#RULES#ACCEPT#STATE#TAPELEN#BLANK#TAPE
-type SectionName = "$" | "rules" | "accept states" | "state" | "tapelen" | "blank" | "tape";
+type SectionName =
+  | "$"
+  | "rules"
+  | "accept states"
+  | "state"
+  | "tapelen"
+  | "blank"
+  | "tape";
 
 const SECTION_COLORS: Record<SectionName, string> = {
-  "$":             "#78716c",  // stone
-  "rules":         "#6366f1",  // indigo
-  "accept states": "#16a34a",  // green
-  "state":         "#ea580c",  // orange
-  "tapelen":       "#9333ea",  // purple
-  "blank":         "#db2777",  // pink
-  "tape":          "#0891b2",  // cyan
+  $: "#78716c", // stone
+  rules: "#6366f1", // indigo
+  "accept states": "#16a34a", // green
+  state: "#ea580c", // orange
+  tapelen: "#9333ea", // purple
+  blank: "#db2777", // pink
+  tape: "#0891b2", // cyan
 };
 
 const SECTION_ORDER: SectionName[] = [
-  "$", "rules", "accept states", "state", "tapelen", "blank", "tape",
+  "$",
+  "rules",
+  "accept states",
+  "state",
+  "tapelen",
+  "blank",
+  "tape",
 ];
 
-function parseSections(tape: readonly string[]): { name: SectionName; start: number; end: number }[] {
+function parseSections(
+  tape: readonly string[],
+): { name: SectionName; start: number; end: number }[] {
   // Find all # positions
   const hashes: number[] = [];
   for (let i = 0; i < tape.length; i++) {
@@ -100,7 +115,10 @@ function collapseSection(
   } else if (headPos > fullBMaxStart + fullMiddleBudget - 1) {
     bFrom = fullBMaxStart;
   } else {
-    bFrom = Math.max(bMinStart, Math.min(fullBMaxStart, headPos - Math.floor(fullMiddleBudget / 2)));
+    bFrom = Math.max(
+      bMinStart,
+      Math.min(fullBMaxStart, headPos - Math.floor(fullMiddleBudget / 2)),
+    );
   }
 
   // Check adjacency with full budget
@@ -119,7 +137,10 @@ function collapseSection(
   // 2 internal gaps — shrink middle to compensate for extra ellipsis
   const shrunkBudget = fullMiddleBudget - ELLIPSIS_WIDTH;
   const shrunkBMaxStart = bMaxEnd - shrunkBudget + 1;
-  bFrom = Math.max(bMinStart, Math.min(shrunkBMaxStart, headPos - Math.floor(shrunkBudget / 2)));
+  bFrom = Math.max(
+    bMinStart,
+    Math.min(shrunkBMaxStart, headPos - Math.floor(shrunkBudget / 2)),
+  );
 
   return [
     { from: start, to: aTo },
@@ -214,9 +235,17 @@ function TapeDisplay({
 
     // Leading ellipsis
     if (ri === 0 && range.from > 0) {
-      elements.push(<span key="pre-ellipsis" className="utm-ellipsis">...</span>);
+      elements.push(
+        <span key="pre-ellipsis" className="utm-ellipsis">
+          ...
+        </span>,
+      );
     } else if (ri > 0) {
-      elements.push(<span key={`gap-${ri}`} className="utm-ellipsis">...</span>);
+      elements.push(
+        <span key={`gap-${ri}`} className="utm-ellipsis">
+          ...
+        </span>,
+      );
     }
 
     for (let i = range.from; i <= range.to; i++) {
@@ -228,7 +257,9 @@ function TapeDisplay({
       elements.push(
         <span key={i} style={{ position: "relative", display: "inline" }}>
           {sLabel && (
-            <span className="utm-section-label" style={{ color }}>{sLabel}</span>
+            <span className="utm-section-label" style={{ color }}>
+              {sLabel}
+            </span>
           )}
           <span
             className={isHead ? "utm-cell utm-cell-head" : "utm-cell"}
@@ -242,31 +273,42 @@ function TapeDisplay({
   }
 
   // Trailing ellipsis
-  if (visibleRanges.length > 0 && visibleRanges[visibleRanges.length - 1].to < tape.length - 1) {
-    elements.push(<span key="post-ellipsis" className="utm-ellipsis">...</span>);
+  if (
+    visibleRanges.length > 0 &&
+    visibleRanges[visibleRanges.length - 1].to < tape.length - 1
+  ) {
+    elements.push(
+      <span key="post-ellipsis" className="utm-ellipsis">
+        ...
+      </span>,
+    );
   }
 
   return (
     <div style={{ marginBottom: 12 }}>
-      <div className="utm-tape-label">{label}{stateLabel && <span style={{ color: "var(--text)" }}>{stateLabel}</span>}</div>
+      <div className="utm-tape-label">
+        {label}
+        {stateLabel && (
+          <span style={{ color: "var(--text)" }}>{stateLabel}</span>
+        )}
+      </div>
       <div className="utm-tape-wrap">{elements}</div>
     </div>
   );
 }
 
-type MyUTMViewerProps<
-  SimState extends string,
-  SimSymbol extends string,
-> = {
+type MyUTMViewerProps<SimState extends string, SimSymbol extends string> = {
   initialSim: TuringMachineSnapshot<SimState, SimSymbol>;
 };
 
-export function MyUTMViewer<
-  SimState extends string,
-  SimSymbol extends string,
->({ initialSim }: MyUTMViewerProps<SimState, SimSymbol>) {
+export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
+  initialSim,
+}: MyUTMViewerProps<SimState, SimSymbol>) {
   const makeInitial = useCallback(() => {
-    const utmSnapshot = myUtmSpec.encode(initialSim) as MyUtmSnapshot<SimState, SimSymbol>;
+    const utmSnapshot = myUtmSpec.encode(initialSim) as MyUtmSnapshot<
+      SimState,
+      SimSymbol
+    >;
     if (!(utmSnapshot instanceof MyUtmSnapshot)) {
       throw new Error("utmSnapshot is not a MyUtmSnapshot???");
     }
@@ -274,11 +316,16 @@ export function MyUTMViewer<
     return { utmSnapshot, decoded };
   }, [initialSim]);
 
-  const [utmSnapshot, setUtmSnapshot] = useState(() => makeInitial().utmSnapshot);
-  const [utmStatus, setUtmStatus] = useState<"accept" | "reject" | "running">("running");
-  const [lastDecoded, setLastDecoded] = useState<TuringMachineSnapshot<SimState, SimSymbol> | null>(
-    () => makeInitial().decoded ?? null,
+  const [utmSnapshot, setUtmSnapshot] = useState(
+    () => makeInitial().utmSnapshot,
   );
+  const [utmStatus, setUtmStatus] = useState<"accept" | "reject" | "running">(
+    "running",
+  );
+  const [lastDecoded, setLastDecoded] = useState<TuringMachineSnapshot<
+    SimState,
+    SimSymbol
+  > | null>(() => makeInitial().decoded ?? null);
   const [playing, setPlaying] = useState(false);
   const [logFps, setLogFps] = useState(Math.log10(5));
   const fps = Math.round(10 ** logFps);
@@ -291,20 +338,36 @@ export function MyUTMViewer<
   const lastDecodedRef = useRef(lastDecoded);
   const stepCountRef = useRef(0);
 
-  useEffect(() => { utmRef.current = utmSnapshot; }, [utmSnapshot]);
-  useEffect(() => { statusRef.current = utmStatus; }, [utmStatus]);
-  useEffect(() => { lastDecodedRef.current = lastDecoded; }, [lastDecoded]);
-  useEffect(() => { stepCountRef.current = stepCount; }, [stepCount]);
+  useEffect(() => {
+    utmRef.current = utmSnapshot;
+  }, [utmSnapshot]);
+  useEffect(() => {
+    statusRef.current = utmStatus;
+  }, [utmStatus]);
+  useEffect(() => {
+    lastDecodedRef.current = lastDecoded;
+  }, [lastDecoded]);
+  useEffect(() => {
+    stepCountRef.current = stepCount;
+  }, [stepCount]);
 
   const MAX_HISTORY = 20;
-  const historyRef = useRef<{ snap: MyUtmSnapshot<SimState, SimSymbol>; decoded: TuringMachineSnapshot<SimState, SimSymbol> | null; stepCount: number }[]>([]);
+  const historyRef = useRef<
+    {
+      snap: MyUtmSnapshot<SimState, SimSymbol>;
+      decoded: TuringMachineSnapshot<SimState, SimSymbol> | null;
+      stepCount: number;
+    }[]
+  >([]);
   const [canRewind, setCanRewind] = useState(false);
 
   const pushHistory = useCallback(() => {
     const h = historyRef.current;
     h.push({
       snap: new MyUtmSnapshot(utmRef.current),
-      decoded: lastDecodedRef.current ? copySnapshot(lastDecodedRef.current) : null,
+      decoded: lastDecodedRef.current
+        ? copySnapshot(lastDecodedRef.current)
+        : null,
       stepCount: stepCountRef.current,
     });
     if (h.length > MAX_HISTORY) h.shift();
@@ -393,7 +456,9 @@ export function MyUTMViewer<
   }, []);
 
   const fpsRef = useRef(fps);
-  useEffect(() => { fpsRef.current = fps; }, [fps]);
+  useEffect(() => {
+    fpsRef.current = fps;
+  }, [fps]);
   const accumRef = useRef(0);
 
   useEffect(() => {
@@ -458,7 +523,8 @@ export function MyUTMViewer<
   return (
     <div className="tm-viewer">
       <div className="utm-status-line">
-        UTM step: {stepCount} | UTM state: {utmSnapshot.state} | head: {utmSnapshot.pos}
+        UTM step: {stepCount} | UTM state: {utmSnapshot.state} | head:{" "}
+        {utmSnapshot.pos}
       </div>
 
       <TapeDisplay
