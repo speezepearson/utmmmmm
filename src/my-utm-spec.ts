@@ -1,8 +1,8 @@
 import {
-  makeInitSnapshot,
   type Dir,
   type TuringMachineSnapshot,
   type TuringMachineSpec,
+  type UtmSnapshot,
   type UtmSpec,
 } from "./types";
 import { indexOf, must } from "./util";
@@ -76,7 +76,7 @@ function fromBinary(bits: readonly MyUtmSymbol[]): number {
 // ════════════════════════════════════════════════════════════════════
 // Encode
 // ════════════════════════════════════════════════════════════════════
-function encode<SimState extends string, SimSymbol extends string>(
+function encodeToTape<SimState extends string, SimSymbol extends string>(
   snapshot: TuringMachineSnapshot<SimState, SimSymbol>,
 ): MyUtmSymbol[] {
   const { spec, state, tape, pos } = snapshot;
@@ -1297,6 +1297,37 @@ const allStates = ["acc_final_home","acc_rest_acc","acc_rest_state","accept","ac
 
 export type MyUtmState = (typeof allStates)[number];
 
+export class MyUtmSnapshot<SimState extends string, SimSymbol extends string> implements UtmSnapshot<MyUtmState, MyUtmSymbol, SimState, SimSymbol> {
+  pos: number;
+  state: MyUtmState;
+  tape: MyUtmSymbol[];
+  simSpec: TuringMachineSpec<SimState, SimSymbol>;
+
+  constructor({pos, state, tape, simSpec}:{
+    pos: number,
+    state: MyUtmState,
+    tape: MyUtmSymbol[],
+    simSpec: TuringMachineSpec<SimState, SimSymbol>,
+  }) {
+    this.pos = pos;
+    this.state = state;
+    this.tape = tape.slice();
+    this.simSpec = simSpec;
+  }
+  
+  static fromSimSnapshot<SimState extends string, SimSymbol extends string>(simSnapshot: TuringMachineSnapshot<SimState, SimSymbol>): MyUtmSnapshot<SimState, SimSymbol> {
+    return new MyUtmSnapshot({pos: 0, state: myUtmSpec.initial, tape: encodeToTape(simSnapshot), simSpec: simSnapshot.spec});
+  }
+
+  get spec() {
+    return myUtmSpec;
+  }
+
+  decode(): undefined | TuringMachineSnapshot<SimState, SimSymbol> {
+    return decode(this.simSpec, this);
+  }
+}
+
 export const myUtmSpec: UtmSpec<MyUtmState, MyUtmSymbol> = {
   allStates,
   allSymbols: [...allSymbols],
@@ -1305,10 +1336,5 @@ export const myUtmSpec: UtmSpec<MyUtmState, MyUtmSymbol> = {
   acceptingStates: new Set<MyUtmState>(["accept"]),
   rules,
 
-  encode,
-  decode,
+  encode: MyUtmSnapshot.fromSimSnapshot,
 };
-
-export function makeInitUtmSnapshot<State extends string, Symbol extends string>(snapshot: TuringMachineSnapshot<State, Symbol> ): TuringMachineSnapshot<MyUtmState, MyUtmSymbol> {
-  return makeInitSnapshot(myUtmSpec, myUtmSpec.encode(snapshot));
-}

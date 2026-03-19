@@ -1,15 +1,13 @@
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { makeInitUtmSnapshot, myUtmSpec } from "./my-utm-spec";
-import { flipBitsSpec } from "./toy-machines";
+import { flipBitsSpec } from "../src/toy-machines";
 import {
   copySnapshot,
   getStatus,
   makeInitSnapshot,
   step,
-  type TuringMachineSnapshot,
-} from "./types";
-import type { MyUtmState, MyUtmSymbol } from "./my-utm-spec";
-import { tmsEqual } from "./util";
+} from "../src/types";
+import { MyUtmSnapshot, type MyUtmState, type MyUtmSymbol } from "../src/my-utm-spec";
+import { tmsEqual } from "../src/util";
 
 const SAVEPOINT_FILE = "verify-nesting.savepoint.json";
 
@@ -20,39 +18,31 @@ function padN(n: number, width: number) {
 type Savepoint = {
   steps: number;
   innerSteps: number;
-  simulator: { state: string; tape: string[]; pos: number };
-  doubleSimulator: { state: string; tape: string[]; pos: number };
+  simulator: {
+    state: MyUtmState;
+    tape: MyUtmSymbol[];
+    pos: number;
+  };
 };
 
-function snapshotToJson(s: TuringMachineSnapshot<string, string>) {
-  return { state: s.state, tape: s.tape.slice(), pos: s.pos };
-}
-
-function loadSnapshot(
-  spec: typeof myUtmSpec,
-  data: { state: string; tape: string[]; pos: number },
-): TuringMachineSnapshot<MyUtmState, MyUtmSymbol> {
-  return { spec, state: data.state, tape: data.tape as MyUtmSymbol[], pos: data.pos };
-}
-
-let simulator: TuringMachineSnapshot<MyUtmState, MyUtmSymbol>;
-let doubleSimulator: TuringMachineSnapshot<MyUtmState, MyUtmSymbol>;
+let simulator: MyUtmSnapshot<typeof flipBitsSpec['allStates'][number], typeof flipBitsSpec['allSymbols'][number]>;
+let doubleSimulator: MyUtmSnapshot<MyUtmState, MyUtmSymbol>;
 let steps: number;
 let innerSteps: number;
 
 const loadArg = process.argv.includes("--load");
 if (loadArg && existsSync(SAVEPOINT_FILE)) {
   const data: Savepoint = JSON.parse(readFileSync(SAVEPOINT_FILE, "utf-8"));
-  simulator = loadSnapshot(myUtmSpec, data.simulator);
-  doubleSimulator = loadSnapshot(myUtmSpec, data.doubleSimulator);
+  simulator = new MyUtmSnapshot({...data.simulator, simSpec: flipBitsSpec});
+  doubleSimulator = MyUtmSnapshot.fromSimSnapshot(simulator);
   steps = data.steps;
   innerSteps = data.innerSteps;
   console.log(
     `Loaded savepoint: steps=${steps}, innerSteps=${innerSteps}`,
   );
 } else {
-  simulator = makeInitUtmSnapshot(makeInitSnapshot(flipBitsSpec, ["0"]));
-  doubleSimulator = makeInitUtmSnapshot(simulator);
+  simulator = MyUtmSnapshot.fromSimSnapshot(makeInitSnapshot(flipBitsSpec, ["0"]));
+  doubleSimulator = MyUtmSnapshot.fromSimSnapshot(simulator);
   steps = 0;
   innerSteps = 0;
 }
@@ -71,7 +61,7 @@ while (true) {
   if (getStatus(step(doubleSimulator)) !== "running") {
     break;
   }
-  const decoded = myUtmSpec.decode(myUtmSpec, doubleSimulator);
+  const decoded = doubleSimulator.decode();
   if (decoded && decoded.pos !== simulator.pos) {
     innerSteps++;
     step(simulator);
@@ -102,7 +92,7 @@ while (true) {
       `[step=${padN(steps, 11)}] ticked the simulated machine! (dur=${padN(Math.round(now - lastInnerTickT), 4)}ms)`,
     );
     console.log(
-      `${padN(innerSteps, 6)}/${padN(expectedInnerSteps, 6)} : ${decoded.tape.join("")} => ${myUtmSpec.decode(flipBitsSpec, decoded)?.tape.join("")}`,
+      `${padN(innerSteps, 6)}/${padN(expectedInnerSteps, 6)} : ${decoded.tape.join("")} => ${new MyUtmSnapshot({...decoded, simSpec: flipBitsSpec}).tape.join("")}`,
     );
     console.log(
       Array(6 + 1 + 6 + 3 + decoded.pos)
@@ -119,8 +109,7 @@ while (true) {
     const savepoint: Savepoint = {
       steps,
       innerSteps,
-      simulator: snapshotToJson(simulator),
-      doubleSimulator: snapshotToJson(doubleSimulator),
+      simulator,
     };
     writeFileSync(SAVEPOINT_FILE, JSON.stringify(savepoint));
   }

@@ -1,8 +1,7 @@
 import { useMemo, useState } from "react";
 import { TuringMachineViewer } from "./TuringMachineViewer";
-import { UTMViewer } from "./UTMViewer";
+import { MyUTMViewer } from "./UTMViewer";
 import { checkPalindromeSpec, flipBitsSpec, write1sForeverSpec } from "./toy-machines";
-import { myUtmSpec } from "./my-utm-spec";
 import "./App.css";
 import { makeInitSnapshot } from "./types";
 
@@ -38,11 +37,9 @@ function App() {
       <TuringMachineViewer spec={write1sForeverSpec} initialTape={[]} />
 
       <h2 style={{ marginTop: "32px" }}>UTM Simulation</h2>
-      <UTMViewer
+      <MyUTMViewer
         key={tapeInput + "-utm"}
-        utmSpec={myUtmSpec}
-        simSpec={myUtmSpec}
-        initialSimTape={myUtmSpec.encode(makeInitSnapshot(flipBitsSpec, ["0", "1"]))}
+        initialSim={makeInitSnapshot(flipBitsSpec, ["0", "1"])}
       />
     </div>
   );

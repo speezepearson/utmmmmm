@@ -1,22 +1,11 @@
 import { useCallback, useEffect, useRef, useState, useMemo } from "react";
 import {
-  type TuringMachineSpec,
   type TuringMachineSnapshot,
-  type UtmSpec,
   copySnapshot,
-  makeInitSnapshot,
   step,
   getStatus,
 } from "./types";
-
-function padTape<State extends string, Symbol extends string>(
-  snapshot: TuringMachineSnapshot<State, Symbol>,
-  blank: Symbol,
-) {
-  while (snapshot.tape.length <= snapshot.pos) {
-    snapshot.tape.push(blank);
-  }
-}
+import { MyUtmSnapshot, myUtmSpec } from "./my-utm-spec";
 
 // Section layout: $#RULES#ACCEPT#STATE#TAPELEN#BLANK#TAPE
 type SectionName = "$" | "rules" | "accept states" | "state" | "tapelen" | "blank" | "tape";
@@ -265,31 +254,25 @@ function TapeDisplay({
   );
 }
 
-type UTMViewerProps<
-  UState extends string,
-  USymbol extends string,
+type MyUTMViewerProps<
   SimState extends string,
   SimSymbol extends string,
 > = {
-  utmSpec: UtmSpec<UState, USymbol>;
-  simSpec: TuringMachineSpec<SimState, SimSymbol>;
-  initialSimTape: readonly SimSymbol[];
+  initialSim: TuringMachineSnapshot<SimState, SimSymbol>;
 };
 
-export function UTMViewer<
-  UState extends string,
-  USymbol extends string,
+export function MyUTMViewer<
   SimState extends string,
   SimSymbol extends string,
->({ utmSpec, simSpec, initialSimTape }: UTMViewerProps<UState, USymbol, SimState, SimSymbol>) {
+>({ initialSim }: MyUTMViewerProps<SimState, SimSymbol>) {
   const makeInitial = useCallback(() => {
-    const simSnapshot = makeInitSnapshot(simSpec, initialSimTape);
-    const utmTape = utmSpec.encode(simSnapshot);
-    const utmSnapshot = makeInitSnapshot(utmSpec, utmTape);
-    padTape(utmSnapshot, utmSpec.blank);
-    const decoded = utmSpec.decode(simSpec, utmSnapshot);
+    const utmSnapshot = myUtmSpec.encode(initialSim) as MyUtmSnapshot<SimState, SimSymbol>;
+    if (!(utmSnapshot instanceof MyUtmSnapshot)) {
+      throw new Error("utmSnapshot is not a MyUtmSnapshot???");
+    }
+    const decoded = utmSnapshot.decode();
     return { utmSnapshot, decoded };
-  }, [utmSpec, simSpec, initialSimTape]);
+  }, [initialSim]);
 
   const [utmSnapshot, setUtmSnapshot] = useState(() => makeInitial().utmSnapshot);
   const [utmStatus, setUtmStatus] = useState<"accept" | "reject" | "running">("running");
@@ -314,13 +297,13 @@ export function UTMViewer<
   useEffect(() => { stepCountRef.current = stepCount; }, [stepCount]);
 
   const MAX_HISTORY = 20;
-  const historyRef = useRef<{ snap: TuringMachineSnapshot<UState, USymbol>; decoded: TuringMachineSnapshot<SimState, SimSymbol> | null; stepCount: number }[]>([]);
+  const historyRef = useRef<{ snap: MyUtmSnapshot<SimState, SimSymbol>; decoded: TuringMachineSnapshot<SimState, SimSymbol> | null; stepCount: number }[]>([]);
   const [canRewind, setCanRewind] = useState(false);
 
   const pushHistory = useCallback(() => {
     const h = historyRef.current;
     h.push({
-      snap: copySnapshot(utmRef.current),
+      snap: new MyUtmSnapshot(utmRef.current),
       decoded: lastDecodedRef.current ? copySnapshot(lastDecodedRef.current) : null,
       stepCount: stepCountRef.current,
     });
@@ -328,18 +311,11 @@ export function UTMViewer<
     setCanRewind(true);
   }, []);
 
-  const stepOnce = useCallback((snap: TuringMachineSnapshot<UState, USymbol>) => {
-    padTape(snap, utmSpec.blank);
-    const st = getStatus(step(snap));
-    padTape(snap, utmSpec.blank);
-    return st;
-  }, [utmSpec.blank]);
-
   const doStep = useCallback(() => {
     if (statusRef.current !== "running") return;
     pushHistory();
-    const next = copySnapshot(utmRef.current);
-    const st = stepOnce(next);
+    const next = utmRef.current;
+    const st = getStatus(step(next));
 
     utmRef.current = next;
     statusRef.current = st;
@@ -347,7 +323,7 @@ export function UTMViewer<
     setUtmStatus(st);
     setStepCount((c) => c + 1);
 
-    const decoded = utmSpec.decode(simSpec, next);
+    const decoded = next.decode();
     if (decoded) {
       lastDecodedRef.current = decoded;
       setLastDecoded(decoded);
@@ -356,17 +332,17 @@ export function UTMViewer<
     if (st !== "running") {
       setPlaying(false);
     }
-  }, [utmSpec, simSpec, stepOnce, pushHistory]);
+  }, [pushHistory]);
 
   const doStepState = useCallback(() => {
     if (statusRef.current !== "running") return;
     pushHistory();
-    const snap = copySnapshot(utmRef.current);
+    const snap = new MyUtmSnapshot(utmRef.current);
     const startState = snap.state;
     let st: "accept" | "reject" | "running" = "running";
     let steps = 0;
     while (st === "running" && snap.state === startState) {
-      st = stepOnce(snap);
+      st = getStatus(step(snap));
       steps++;
     }
 
@@ -376,7 +352,7 @@ export function UTMViewer<
     setUtmStatus(st);
     setStepCount((c) => c + steps);
 
-    const decoded = utmSpec.decode(simSpec, snap);
+    const decoded = snap.decode();
     if (decoded) {
       lastDecodedRef.current = decoded;
       setLastDecoded(decoded);
@@ -385,7 +361,7 @@ export function UTMViewer<
     if (st !== "running") {
       setPlaying(false);
     }
-  }, [utmSpec, simSpec, stepOnce, pushHistory]);
+  }, [pushHistory]);
 
   const reset = useCallback(() => {
     const { utmSnapshot: snap, decoded } = makeInitial();
@@ -434,10 +410,10 @@ export function UTMViewer<
       if (stepsThisFrame === 0) return;
 
       pushHistory();
-      const snap = copySnapshot(utmRef.current);
+      const snap = new MyUtmSnapshot(utmRef.current);
       let st: "accept" | "reject" | "running" = "running";
       for (let i = 0; i < stepsThisFrame; i++) {
-        st = stepOnce(snap);
+        st = getStatus(step(snap));
         if (st !== "running") break;
       }
 
@@ -449,7 +425,7 @@ export function UTMViewer<
       setStepCount(stepCountRef.current);
 
       // Only decode once per render frame (on the final state)
-      const decoded = utmSpec.decode(simSpec, snap);
+      const decoded = snap.decode();
       if (decoded) {
         lastDecodedRef.current = decoded;
         setLastDecoded(decoded);
@@ -460,7 +436,7 @@ export function UTMViewer<
       }
     }, 1000 / MAX_RENDER_FPS);
     return () => clearInterval(interval);
-  }, [playing, stepOnce, utmSpec, simSpec, pushHistory]);
+  }, [playing, pushHistory]);
 
   const halted = utmStatus !== "running";
 
@@ -473,11 +449,11 @@ export function UTMViewer<
   const simTapeDisplay = useMemo(() => {
     if (!lastDecoded) return null;
     const tape = lastDecoded.tape.slice() as string[];
-    while (tape.length <= lastDecoded.pos) {
-      tape.push(simSpec.blank);
-    }
+    // while (tape.length <= lastDecoded.pos) {
+    //   tape.push(initialSim.spec.blank);
+    // }
     return tape;
-  }, [lastDecoded, simSpec.blank]);
+  }, [lastDecoded]);
 
   return (
     <div className="tm-viewer">

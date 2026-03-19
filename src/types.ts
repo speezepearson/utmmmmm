@@ -1,6 +1,6 @@
 export type Dir = "L" | "R";
 
-export type TuringMachineSpec<State extends string, Symbol extends string> = {
+export interface TuringMachineSpec<State extends string, Symbol extends string> {
   readonly allStates: ReadonlyArray<State>;
   readonly allSymbols: ReadonlyArray<Symbol>;
   readonly initial: State;
@@ -86,10 +86,10 @@ export function step<State extends string, Symbol extends string>(
 
   return tm;
 }
-export function run<State extends string, Symbol extends string>(
-  snapshot: TuringMachineSnapshot<State, Symbol>,
+export function run<TM extends TuringMachineSnapshot<string, string>>(
+  snapshot: TM,
   { gas = 1e10 }: { gas?: number } = {},
-): TuringMachineSnapshot<State, Symbol> {
+): TM {
   while (getStatus(snapshot) === "running") {
     if (gas <= 0) {
       throw new Error("Gas limit exceeded");
@@ -107,8 +107,10 @@ export type UtmSpec<
 > = TuringMachineSpec<UState, USymbol> & {
   encode<SimState extends string, SimSymbol extends string>(
     snapshot: TuringMachineSnapshot<SimState, SimSymbol>,
-  ): USymbol[];
+  ): UtmSnapshot<UState, USymbol, SimState, SimSymbol>;
+};
 
+export type UtmSnapshot<UState extends string, USymbol extends string, SimState extends string, SimSymbol extends string> = TuringMachineSnapshot<UState, USymbol> & {
   /** Decodes the tape of a running UTM into a snapshot of the simulated machine. May return undefined if the UTM is mid-operation.
    * Should always yield the simulated TM's snapshots in-order: so if the simulated TM is in state X, then steps to Y, then steps to Z,
    * then, when we simulate it with a UTM, `decode()`ing the UTM's tape should return:
@@ -116,11 +118,9 @@ export type UtmSpec<
    * - then (Y/undefined) for a while...
    * - then (Z/undefined) for a while...
    */
-  decode<SimState extends string, SimSymbol extends string>(
-    spec: TuringMachineSpec<SimState, SimSymbol>,
-    utm: TuringMachineSnapshot<UState, USymbol>,
-  ): undefined | TuringMachineSnapshot<SimState, SimSymbol>;
-};
+  decode(): undefined | TuringMachineSnapshot<SimState, SimSymbol>;
+  
+}
 
 export function assertNever(x: never): never {
   throw new Error(`Unexpected value: ${x}`);
