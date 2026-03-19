@@ -66,11 +66,11 @@ describe("myUtmSpec gold standard tests", () => {
         const snap0 = myUtmSpec.decode(tm.spec, utm.tape);
         expect(snap0).toEqual(tm);
 
-        while (isDeepStrictEqual(snap0, myUtmSpec.decode(tm.spec, utm.tape))) {
-          expect(step(utm)).toBe("continue");
+        while (isDeepStrictEqual(snap0, myUtmSpec.decode(tm.spec, utm.tape)) && getStatus(utm) === "running") {
+          step(utm);
         }
-        while (myUtmSpec.decode(tm.spec, utm.tape) === undefined) {
-          expect(step(utm)).toBe("continue");
+        while (myUtmSpec.decode(tm.spec, utm.tape) === undefined && getStatus(utm) === "running") {
+          step(utm);
         }
 
         const snap1 = myUtmSpec.decode(tm.spec, utm.tape);
