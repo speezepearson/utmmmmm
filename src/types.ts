@@ -81,10 +81,12 @@ export function step<State extends string, Symbol extends string>(
 }
 export function run<State extends string, Symbol extends string>(
   snapshot: TuringMachineSnapshot<State, Symbol>,
-  { gas = 1e9 }: { gas?: number } = {},
+  { gas = 1e10 }: { gas?: number } = {},
 ): TuringMachineSnapshot<State, Symbol> {
   while (getStatus(snapshot) === "running") {
-    if (gas <= 0) break;
+    if (gas <= 0) {
+      throw new Error("Gas limit exceeded");
+    }
     step(snapshot);
     gas--;
   }

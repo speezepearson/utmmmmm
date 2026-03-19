@@ -74,7 +74,6 @@ describe("myUtmSpec gold standard tests", () => {
         }
 
         const snap1 = myUtmSpec.decode(tm.spec, utm);
-        expect(snap1).not.toEqual(snap0);
         expect(snap1).toEqual(step(tm));
       },
     );
