@@ -4,11 +4,9 @@ import {
   makeInitSnapshot,
   step,
   getStatus,
-  type TuringMachineSnapshot,
 } from "./types";
 import {
   checkPalindromeSpec,
-  flipBitsSpec,
 } from "./toy-machines";
 import { isDeepStrictEqual } from "node:util";
 

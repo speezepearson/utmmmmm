@@ -68,7 +68,7 @@ describe("myUtmSpec gold standard tests", () => {
     it.each(variousSnapshots)(
       "decodes to original snapshot, then undefined, then stepped snapshot",
       (tm) => {
-        const utm = makeInitSnapshot(myUtmSpec, myUtmSpec.encode(tm));
+        const utm = makeInitUtmSnapshot(tm);
 
         const snap0 = myUtmSpec.decode(tm.spec, utm);
         expect(snap0).toEqual(tm);
@@ -96,7 +96,7 @@ describe("myUtmSpec gold standard tests", () => {
 
     it("terminates with the correct decoded tape", () => {
       const tm = makeInitSnapshot(flipBitsSpec, ["0", "1", "0", "1", "1"]);
-      const utm = run(makeInitSnapshot(myUtmSpec, myUtmSpec.encode(tm)));
+      const utm = run(makeInitUtmSnapshot(tm));
 
       run(tm);
       run(utm);
