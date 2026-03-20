@@ -114,9 +114,22 @@ function encodeToTape<SimState extends string, SimSymbol extends string>(
 ): TapeOverlay<MyUtmSymbol> {
   const { spec, state, tape, pos } = snapshot;
   const stateIdx = mustStateIndex(spec.allStates, state);
+
+  const header = buildHeader(spec, stateIdx, optimizationHints);
+
+  return makeSimpleTapeOverlay(
+    makeEncodeTapeOverlayBackground(spec, header, pos, tape),
+  );
+}
+
+/** Build the header portion of the UTM tape (everything before the TAPE section cells). */
+function buildHeader<SimState extends string, SimSymbol extends string>(
+  spec: TuringMachineSpec<SimState, SimSymbol>,
+  stateIdx: StateIdx,
+  optimizationHints: Array<[SimState, SimSymbol]>,
+): MyUtmSymbol[] {
   const sBits = numBits(spec.allStates.length);
   const symBits = numBits(spec.allSymbols.length);
-  const blankIdx = mustSymbolIndex(spec.allSymbols, spec.blank);
 
   /** The header portion of the UTM tape (everything before the TAPE section cells). */
   const header: MyUtmSymbol[] = [];
@@ -178,44 +191,36 @@ function encodeToTape<SimState extends string, SimSymbol extends string>(
 
   // BLANK section
   header.push("#");
-  header.push(...toBinary(blankIdx, symBits));
+  header.push(
+    ...toBinary(mustSymbolIndex(spec.allSymbols, spec.blank), symBits),
+  );
 
   // TAPE section marker
   header.push("#");
 
-  // The tape section is lazily derived from the simulated machine's tape.
-  // Each sim cell at index `cellIdx` maps to (1 + symBits) UTM cells:
-  //   marker (^ if cellIdx === pos, else ,) followed by symBits binary digits.
-  const tapeSecStart = header.length;
-  const cellSize = 1 + symBits;
-
-  return makeSimpleTapeOverlay(
-    makeEncodeTapeOverlayBackground(
-      header,
-      tapeSecStart,
-      cellSize,
-      pos,
-      tape,
-      spec,
-      symBits,
-    ),
-  );
+  return header;
 }
 
 /**
  * Construct a TapeOverlay for an encoded UTM tape.
- * The header portion is stored concretely; the tape section is lazily derived
- * from the simulated machine's TapeOverlay.
+ * The header portion is stored concretely.
+ * The tape section is lazily derived from the simulated machine's TapeOverlay:
+ * each sim cell at index `cellIdx` maps to (1 + symBits) UTM cells:
+ * marker (^ if cellIdx === pos, else ,) followed by symBits binary digits.
  */
 function makeEncodeTapeOverlayBackground<SimSymbol extends string>(
-  header: MyUtmSymbol[],
-  tapeSecStart: TapeIdx,
-  cellSize: number,
+  simSpec: TuringMachineSpec<string, SimSymbol>,
+  header: readonly MyUtmSymbol[],
   pos: TapeIdx,
   simTape: TapeOverlay<SimSymbol>,
-  simSpec: { blank: SimSymbol; allSymbols: ReadonlyArray<SimSymbol> },
-  symBits: number,
 ): (i: TapeIdx) => MyUtmSymbol | undefined {
+  header = header.slice();
+  simTape = simTape.clone();
+
+  const symBits = numBits(simSpec.allSymbols.length);
+  const tapeSecStart = header.length;
+  const cellSize = 1 + symBits;
+
   return (idx: TapeIdx): MyUtmSymbol | undefined => {
     if (idx < tapeSecStart) return header[idx];
     const offset = idx - tapeSecStart;
@@ -339,6 +344,7 @@ function makeDecodedTapeOverlayBackground<SimSymbol extends string>(
   cellSize: number,
   symBits: number,
 ): (i: TapeIdx) => SimSymbol | undefined {
+  utmTape = utmTape.clone();
   return (cellIdx: TapeIdx): SimSymbol | undefined => {
     const utmIdx = tapeSecStart + cellIdx * cellSize;
     const marker = utmTape.get(utmIdx);

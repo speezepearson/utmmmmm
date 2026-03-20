@@ -47,8 +47,9 @@ export function indexOf<Arr extends ReadonlyArray<unknown>>(
 }
 
 export function makeArrayTapeOverlay<Symbol extends string>(
-  array: Symbol[],
+  array: readonly Symbol[],
 ): TapeOverlay<Symbol> {
+  array = array.slice();
   return makeSimpleTapeOverlay((i) => array[i]);
 }
 
