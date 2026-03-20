@@ -7,7 +7,12 @@ import {
   type MyUtmSymbol,
 } from "./my-utm-spec";
 import myUtmOptimizationHints from "./my-utm-spec-transition-optimization-hints";
-import { makeInitSnapshot, type TapeIdx, type TapeOverlay } from "./types";
+import {
+  makeInitSnapshot,
+  makeSimpleTapeOverlay,
+  type TapeIdx,
+  type TapeOverlay,
+} from "./types";
 import {
   makeArrayTapeOverlay,
   must,
@@ -19,7 +24,7 @@ export class InfiniteUtm extends MyUtmSnapshot<MyUtmState, MyUtmSymbol> {
   constructor({
     pos = 0,
     state = myUtmSpec.initial,
-    tape = makeInfiniteUtmTape(),
+    tape = makeSimpleTapeOverlay(infiniteUtmTapeBackground),
   }: {
     pos?: TapeIdx;
     state?: MyUtmState;
@@ -57,7 +62,7 @@ const header = (() => {
 const nSymBits = numBits(myUtmSpec.allStates.length);
 const cellSize = 1 + nSymBits;
 
-function getBackgroundAt(idx: TapeIdx): MyUtmSymbol {
+function infiniteUtmTapeBackground(idx: TapeIdx): MyUtmSymbol {
   if (idx < header.length) return header[idx];
   const cellIdx = Math.floor((idx - header.length) / cellSize);
   const within = (idx - header.length) % cellSize;
@@ -65,28 +70,8 @@ function getBackgroundAt(idx: TapeIdx): MyUtmSymbol {
     return cellIdx === 0 ? "^" : ",";
   }
   const x = toBinary(
-    mustSymbolIndex(myUtmSpec.allSymbols, getBackgroundAt(cellIdx)),
+    mustSymbolIndex(myUtmSpec.allSymbols, infiniteUtmTapeBackground(cellIdx)),
     nSymBits,
   );
   return x[within - 1];
 }
-
-function makeInfiniteUtmTape(
-  overrides?: Map<TapeIdx, MyUtmSymbol>,
-): TapeOverlay<MyUtmSymbol> {
-  overrides ??= new Map<TapeIdx, MyUtmSymbol>();
-  return {
-    get(idx: TapeIdx): MyUtmSymbol | undefined {
-      return overrides.get(idx) ?? getBackgroundAt(idx);
-    },
-    set(idx: TapeIdx, sym: MyUtmSymbol): void {
-      overrides.set(idx, sym);
-    },
-    clone(): TapeOverlay<MyUtmSymbol> {
-      return makeInfiniteUtmTape(new Map(overrides));
-    },
-  };
-}
-
-const t = makeInfiniteUtmTape();
-console.log(Array.from({ length: 1e5 }, (_, i) => t.get(i)).join(""));

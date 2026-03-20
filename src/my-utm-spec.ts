@@ -1,4 +1,5 @@
 import {
+  makeSimpleTapeOverlay,
   type Dir,
   type StateIdx,
   type SymbolIdx,
@@ -187,17 +188,17 @@ function encodeToTape<SimState extends string, SimSymbol extends string>(
   //   marker (^ if cellIdx === pos, else ,) followed by symBits binary digits.
   const tapeSecStart = header.length;
   const cellSize = 1 + symBits;
-  const writes = new Map<TapeIdx, MyUtmSymbol>();
 
-  return makeEncodeTapeOverlay(
-    header,
-    writes,
-    tapeSecStart,
-    cellSize,
-    pos,
-    tape,
-    spec,
-    symBits,
+  return makeSimpleTapeOverlay(
+    makeEncodeTapeOverlayBackground(
+      header,
+      tapeSecStart,
+      cellSize,
+      pos,
+      tape,
+      spec,
+      symBits,
+    ),
   );
 }
 
@@ -206,51 +207,32 @@ function encodeToTape<SimState extends string, SimSymbol extends string>(
  * The header portion is stored concretely; the tape section is lazily derived
  * from the simulated machine's TapeOverlay.
  */
-function makeEncodeTapeOverlay<SimSymbol extends string>(
+function makeEncodeTapeOverlayBackground<SimSymbol extends string>(
   header: MyUtmSymbol[],
-  writes: Map<TapeIdx, MyUtmSymbol>,
   tapeSecStart: TapeIdx,
   cellSize: number,
   pos: TapeIdx,
   simTape: TapeOverlay<SimSymbol>,
   simSpec: { blank: SimSymbol; allSymbols: ReadonlyArray<SimSymbol> },
   symBits: number,
-): TapeOverlay<MyUtmSymbol> {
-  return {
-    get(idx: TapeIdx): MyUtmSymbol | undefined {
-      if (writes.has(idx)) return writes.get(idx)!;
-      if (idx < tapeSecStart) return header[idx];
-      const offset = idx - tapeSecStart;
-      const cellIdx = Math.floor(offset / cellSize);
-      const within = offset % cellSize;
-      // If the sim cell is blank (or beyond the overlay), this UTM cell is not in the overlay.
-      const simSym = simTape.get(cellIdx);
-      if ((simSym ?? simSpec.blank) === simSpec.blank && cellIdx !== pos) {
-        return undefined;
-      }
-      if (within === 0) {
-        return cellIdx === pos ? "^" : ",";
-      }
-      const sym = simSym ?? simSpec.blank;
-      const symIdx = must(indexOf(simSpec.allSymbols, sym)) as SymbolIdx;
-      const bits = toBinary(symIdx, symBits);
-      return bits[within - 1];
-    },
-    set(idx: TapeIdx, sym: MyUtmSymbol): void {
-      writes.set(idx, sym);
-    },
-    clone(): TapeOverlay<MyUtmSymbol> {
-      return makeEncodeTapeOverlay(
-        header.slice(),
-        new Map(writes),
-        tapeSecStart,
-        cellSize,
-        pos,
-        simTape,
-        simSpec,
-        symBits,
-      );
-    },
+): (i: TapeIdx) => MyUtmSymbol | undefined {
+  return (idx: TapeIdx): MyUtmSymbol | undefined => {
+    if (idx < tapeSecStart) return header[idx];
+    const offset = idx - tapeSecStart;
+    const cellIdx = Math.floor(offset / cellSize);
+    const within = offset % cellSize;
+    // If the sim cell is blank (or beyond the overlay), this UTM cell is not in the overlay.
+    const simSym = simTape.get(cellIdx);
+    if ((simSym ?? simSpec.blank) === simSpec.blank && cellIdx !== pos) {
+      return undefined;
+    }
+    if (within === 0) {
+      return cellIdx === pos ? "^" : ",";
+    }
+    const sym = simSym ?? simSpec.blank;
+    const symIdx = must(indexOf(simSpec.allSymbols, sym)) as SymbolIdx;
+    const bits = toBinary(symIdx, symBits);
+    return bits[within - 1];
   };
 }
 
@@ -332,12 +314,14 @@ function decode<SimState extends string, SimSymbol extends string>(
   }
 
   // Build a lazy TapeOverlay backed by the cloned UTM tape, with its own writes overlay.
-  const decodedTape = makeDecodedTapeOverlay(
-    utmTapeSnapshot,
-    spec,
-    tapeSecStart,
-    cellSize,
-    symBits,
+  const decodedTape = makeSimpleTapeOverlay(
+    makeDecodedTapeOverlayBackground(
+      utmTapeSnapshot,
+      spec,
+      tapeSecStart,
+      cellSize,
+      symBits,
+    ),
   );
 
   return {
@@ -348,38 +332,21 @@ function decode<SimState extends string, SimSymbol extends string>(
   };
 }
 
-function makeDecodedTapeOverlay<SimSymbol extends string>(
+function makeDecodedTapeOverlayBackground<SimSymbol extends string>(
   utmTape: TapeOverlay<MyUtmSymbol>,
   spec: { allSymbols: ReadonlyArray<SimSymbol>; blank: SimSymbol },
   tapeSecStart: TapeIdx,
   cellSize: number,
   symBits: number,
-): TapeOverlay<SimSymbol> {
-  const writes = new Map<TapeIdx, SimSymbol>();
-
-  return {
-    get(cellIdx: TapeIdx): SimSymbol | undefined {
-      if (writes.has(cellIdx)) return writes.get(cellIdx)!;
-      const utmIdx = tapeSecStart + cellIdx * cellSize;
-      const marker = utmTape.get(utmIdx);
-      if (marker === undefined) return undefined;
-      if (marker !== "," && marker !== "^" && marker !== ">") return undefined;
-      const symIdx = fromBinaryAt(utmTape, utmIdx + 1, symBits);
-      if (symIdx >= spec.allSymbols.length) return undefined;
-      return spec.allSymbols[symIdx];
-    },
-    set(cellIdx: TapeIdx, sym: SimSymbol): void {
-      writes.set(cellIdx, sym);
-    },
-    clone(): TapeOverlay<SimSymbol> {
-      return makeDecodedTapeOverlay(
-        utmTape.clone(),
-        spec,
-        tapeSecStart,
-        cellSize,
-        symBits,
-      );
-    },
+): (i: TapeIdx) => SimSymbol | undefined {
+  return (cellIdx: TapeIdx): SimSymbol | undefined => {
+    const utmIdx = tapeSecStart + cellIdx * cellSize;
+    const marker = utmTape.get(utmIdx);
+    if (marker === undefined) return undefined;
+    if (marker !== "," && marker !== "^" && marker !== ">") return undefined;
+    const symIdx = fromBinaryAt(utmTape, utmIdx + 1, symBits);
+    if (symIdx >= spec.allSymbols.length) return undefined;
+    return spec.allSymbols[symIdx];
   };
 }
 

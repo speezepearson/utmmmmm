@@ -1,5 +1,6 @@
 import {
   getStatus,
+  makeSimpleTapeOverlay,
   step,
   type StateIdx,
   type SymbolIdx,
@@ -48,17 +49,7 @@ export function indexOf<Arr extends ReadonlyArray<unknown>>(
 export function makeArrayTapeOverlay<Symbol extends string>(
   array: Symbol[],
 ): TapeOverlay<Symbol> {
-  return {
-    get(i: TapeIdx): Symbol | undefined {
-      return array[i];
-    },
-    set(i: TapeIdx, sym: Symbol): void {
-      array[i] = sym;
-    },
-    clone(): TapeOverlay<Symbol> {
-      return makeArrayTapeOverlay(array.slice());
-    },
-  };
+  return makeSimpleTapeOverlay((i) => array[i]);
 }
 
 export function runUntilInnerStep<

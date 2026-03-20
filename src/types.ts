@@ -33,6 +33,22 @@ export type TapeOverlay<Symbol extends string> = {
   set(i: TapeIdx, sym: Symbol): void;
   clone(): TapeOverlay<Symbol>;
 };
+export function makeSimpleTapeOverlay<Symbol extends string>(
+  background: (idx: TapeIdx) => Symbol | undefined,
+  writes: Map<TapeIdx, Symbol> = new Map(),
+): TapeOverlay<Symbol> {
+  return {
+    get(i: TapeIdx): Symbol | undefined {
+      return writes.get(i) ?? background(i);
+    },
+    set(i: TapeIdx, sym: Symbol): void {
+      writes.set(i, sym);
+    },
+    clone(): TapeOverlay<Symbol> {
+      return makeSimpleTapeOverlay(background, new Map(writes));
+    },
+  };
+}
 
 export type TuringMachineSnapshot<
   State extends string,
