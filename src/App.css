@@ -146,6 +146,27 @@
   margin: 0 2px;
 }
 
+.utm-rule {
+  display: inline;
+  border-bottom: 1px solid transparent;
+}
+
+.utm-rule-active {
+  border-bottom: 1px solid #6366f1;
+  background: rgba(99, 102, 241, 0.1);
+  border-radius: 2px;
+}
+
+.utm-tcell {
+  display: inline;
+}
+
+.utm-tcell-head {
+  border-bottom: 1px solid #0891b2;
+  background: rgba(8, 145, 178, 0.1);
+  border-radius: 2px;
+}
+
 .utm-section-label {
   font-size: 9px;
   font-weight: 700;
