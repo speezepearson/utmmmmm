@@ -1,7 +1,12 @@
-import { flipBitsSpec } from "./toy-machines";
-import { getStatus, makeInitSnapshot, step } from "./types";
-import { makeArrayTapeOverlay } from "./util";
 import { myUtmSpec } from "./my-utm-spec";
+import { flipBitsSpec } from "./toy-machines";
+import {
+  getStatus,
+  makeInitSnapshot,
+  step,
+  type TuringMachineSnapshot,
+} from "./types";
+import { makeArrayTapeOverlay } from "./util";
 
 const simSnap = step(
   makeInitSnapshot(flipBitsSpec, makeArrayTapeOverlay(["0", "1"])),
@@ -9,7 +14,10 @@ const simSnap = step(
 const utm = myUtmSpec.encode(simSnap);
 
 // Read the full UTM tape as a string
-function readTape(snap: typeof utm, maxLen = 200): string {
+function readTape(
+  snap: TuringMachineSnapshot<string, string>,
+  maxLen = 200,
+): string {
   const chars: string[] = [];
   for (let i = 0; i < maxLen; i++) {
     const c = snap.tape.get(i);
@@ -21,7 +29,7 @@ function readTape(snap: typeof utm, maxLen = 200): string {
 
 console.log("Simulated machine:");
 console.log(`  state=${simSnap.state} pos=${simSnap.pos}`);
-console.log(`  tape: ${readTape(simSnap as any)}`);
+console.log(`  tape: ${readTape(simSnap)}`);
 console.log();
 
 console.log("Initial UTM tape:");
@@ -54,14 +62,10 @@ for (let i = 1; i <= MAX_STEPS; i++) {
     const at = tapeStr[head] ?? "_";
     const after = tapeStr.slice(head + 1);
 
-    console.log(
-      `step ${i}: UTM state=${utm.state} pos=${head}  status=${st}`,
-    );
+    console.log(`step ${i}: UTM state=${utm.state} pos=${head}  status=${st}`);
     console.log(`  tape: ${before}[${at}]${after}`);
     if (decoded) {
-      console.log(
-        `  DECODED: state=${decoded.state} pos=${decoded.pos}`,
-      );
+      console.log(`  DECODED: state=${decoded.state} pos=${decoded.pos}`);
     }
     if (st !== "running") {
       console.log(`\nHalted after ${i} steps: ${st}`);

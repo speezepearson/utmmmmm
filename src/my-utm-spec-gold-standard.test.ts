@@ -3,6 +3,15 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { myUtmSpec } from "./my-utm-spec";
+import { must } from "./test-util";
+import {
+  acceptImmediatelySpec,
+  checkPalindromeSpec,
+  doubleXSpec,
+  flipBitsSpec,
+  rejectImmediatelySpec,
+} from "./toy-machines";
 import {
   copySnapshot,
   getStatus,
@@ -11,17 +20,7 @@ import {
   step,
   type TuringMachineSnapshot,
 } from "./types";
-import { myUtmSpec } from "./my-utm-spec";
-import {
-  acceptImmediatelySpec,
-  checkPalindromeSpec,
-  doubleXSpec,
-  flipBitsSpec,
-  rejectImmediatelySpec,
-} from "./toy-machines";
 import { makeArrayTapeOverlay, runUntilInnerStep } from "./util";
-import { must } from "./test-util";
-import myUtmOptimizationHints from "./my-utm-spec-transition-optimization-hints";
 
 function listAllSnapshots<State extends string, Symbol extends string>(
   tm: TuringMachineSnapshot<State, Symbol>,
