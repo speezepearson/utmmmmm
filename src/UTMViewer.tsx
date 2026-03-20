@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { compile, compileSnapshot, fastStep, writeBack } from "./fast-run";
 import { MyUtmSnapshot, myUtmSpec } from "./my-utm-spec";
 import { TapeView } from "./TapeView";
-import { makeBreaker } from "./test-util";
 import {
   type TuringMachineSnapshot,
   copySnapshot,
@@ -190,7 +189,7 @@ export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
       return;
     }
     const MAX_RENDER_FPS = 30;
-    const interval = setInterval(async () => {
+    const interval = setInterval(() => {
       if (statusRef.current !== "running") return;
       accumRef.current += fpsRef.current / MAX_RENDER_FPS;
       const stepsThisFrame = Math.floor(accumRef.current);
@@ -199,11 +198,11 @@ export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
       pushHistory();
       const snap = new MyUtmSnapshot(utmRef.current);
       // const compiled = compileSnapshot(snap, machine);
-      const breaker = makeBreaker();
+      // const breaker = makeBreaker();
       for (let i = 0; i < stepsThisFrame; i++) {
         stepCountRef.current++;
         if (getStatus(step(snap)) !== "running") break;
-        await breaker();
+        // await breaker();
       }
       const st = getStatus(snap);
       utmRef.current = snap;
