@@ -52,12 +52,13 @@ function useTuringMachine<State extends string, Symbol extends string>(
   }, [spec, initialTape, publish]);
 
   const onSteps = useCallback(
-    (count: number) => {
+    (count: number, stopAtMs: number) => {
       if (statusRef.current !== "running") return false;
       const snap = snapRef.current;
       for (let i = 0; i < count; i++) {
         step(snap);
         if (getStatus(snap) !== "running") break;
+        if (i % 1e4 === 0 && performance.now() >= stopAtMs) break;
       }
       publish(snap);
       return getStatus(snap) === "running";

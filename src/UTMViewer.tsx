@@ -155,13 +155,14 @@ export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
   }, []);
 
   const onSteps = useCallback(
-    (count: number) => {
+    (count: number, stopAtMs: number) => {
       if (statusRef.current !== "running") return false;
       pushHistory();
       const snap = new MyUtmSnapshot(utmRef.current);
       for (let i = 0; i < count; i++) {
         stepCountRef.current++;
         if (getStatus(step(snap)) !== "running") break;
+        if (i % 1e4 === 0 && performance.now() >= stopAtMs) break;
       }
       const st = getStatus(snap);
       utmRef.current = snap;
@@ -219,7 +220,7 @@ export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
           value={fps}
           onChange={setFps}
           min={1}
-          max={10000000}
+          max={1e7}
         />
         <LogSlider
           label="Radius"
