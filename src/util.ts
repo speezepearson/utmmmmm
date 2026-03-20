@@ -53,7 +53,7 @@ export function makeArrayTapeOverlay<Symbol extends string>(
       array[i] = sym;
     },
     clone(): TapeOverlay<Symbol> {
-      return makeArrayTapeOverlay(array);
+      return makeArrayTapeOverlay(array.slice());
     },
   };
 }
