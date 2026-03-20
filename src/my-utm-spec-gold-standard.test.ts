@@ -14,6 +14,7 @@ import { myUtmSpec } from "./my-utm-spec";
 import {
   acceptImmediatelySpec,
   checkPalindromeSpec,
+  doubleXSpec,
   flipBitsSpec,
   rejectImmediatelySpec,
 } from "./toy-machines";
@@ -36,6 +37,7 @@ const variousSnapshots = [
   makeInitSnapshot(acceptImmediatelySpec, []),
   makeInitSnapshot(rejectImmediatelySpec, []),
   ...listAllSnapshots(makeInitSnapshot(flipBitsSpec, ["0", "1"])),
+  ...listAllSnapshots(makeInitSnapshot(doubleXSpec, ["$", "X", "X"])),
   ...listAllSnapshots(makeInitSnapshot(checkPalindromeSpec, ["a", "a"])),
   ...listAllSnapshots(makeInitSnapshot(checkPalindromeSpec, ["b", "b"])),
   ...listAllSnapshots(makeInitSnapshot(checkPalindromeSpec, ["a", "b"])),

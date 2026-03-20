@@ -220,3 +220,102 @@ export const checkPalindromeSpec = ((): TuringMachineSpec<
     rules: buildRules(),
   };
 })();
+
+type DoubleXSymbol = "_" | "$" | "X" | "Y" | "Z";
+type DoubleXState =
+  | "start"
+  | "findX"
+  | "goRight"
+  | "goBack"
+  | "cleanL"
+  | "cleanR"
+  | "done";
+
+export const doubleXSpec: TuringMachineSpec<DoubleXState, DoubleXSymbol> =
+  (() => {
+    // Doubles a string of X's preceded by $.
+    // Algorithm:
+    //   1. For each X, mark it as Y and append a Z at the right end.
+    //   2. When no unmarked X's remain, convert all Y's and Z's back to X's.
+    //
+    // States:
+    //   start   – skip past $
+    //   findX   – find leftmost unmarked X
+    //   goRight – scan right to append a Z
+    //   goBack  – return left to find next X
+    //   cleanL  – convert Y→X going left
+    //   cleanR  – convert Z→X going right
+    //   done    – halting accept state
+
+    type S = DoubleXSymbol;
+    type Q = DoubleXState;
+    type Dir = "L" | "R";
+    type Rule = [Q, S, Dir];
+
+    const rules = new Map<Q, Map<S, Rule>>();
+
+    rules.set("start", new Map<S, Rule>([["$", ["findX", "$", "R"]]]));
+
+    rules.set(
+      "findX",
+      new Map<S, Rule>([
+        ["X", ["goRight", "Y", "R"]], // mark & go append
+        ["Y", ["findX", "Y", "R"]], // skip marked
+        ["Z", ["cleanL", "Z", "L"]], // all X's marked, clean up
+        ["_", ["done", "_", "L"]], // no X's at all (0 case)
+      ]),
+    );
+
+    rules.set(
+      "goRight",
+      new Map<S, Rule>([
+        ["X", ["goRight", "X", "R"]], // skip remaining X's
+        ["Z", ["goRight", "Z", "R"]], // skip already-appended Z's
+        ["_", ["goBack", "Z", "L"]], // append Z, head back
+      ]),
+    );
+
+    rules.set(
+      "goBack",
+      new Map<S, Rule>([
+        ["X", ["goBack", "X", "L"]],
+        ["Y", ["goBack", "Y", "L"]],
+        ["Z", ["goBack", "Z", "L"]],
+        ["$", ["findX", "$", "R"]], // back at start, find next X
+      ]),
+    );
+
+    rules.set(
+      "cleanL",
+      new Map<S, Rule>([
+        ["Y", ["cleanL", "X", "L"]], // convert Y→X
+        ["$", ["cleanR", "$", "R"]], // reached $, now go right
+      ]),
+    );
+
+    rules.set(
+      "cleanR",
+      new Map<S, Rule>([
+        ["X", ["cleanR", "X", "R"]], // skip converted X's
+        ["Z", ["cleanR", "X", "R"]], // convert Z→X
+        ["_", ["done", "_", "L"]], // finished
+      ]),
+    );
+
+    return {
+      allStates: [
+        "start",
+        "findX",
+        "goRight",
+        "goBack",
+        "cleanL",
+        "cleanR",
+        "done",
+      ],
+      allSymbols: ["_", "$", "X", "Y", "Z"],
+      initial: "start",
+      blank: "_",
+      acceptingStates: new Set<Q>(["done"]),
+      rules,
+    };
+  })();

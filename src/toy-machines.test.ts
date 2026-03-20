@@ -3,6 +3,7 @@ import { getStatus, makeInitSnapshot, run, step } from "./types";
 import {
   acceptImmediatelySpec,
   checkPalindromeSpec,
+  doubleXSpec,
   flipBitsSpec,
   rejectImmediatelySpec,
 } from "./toy-machines";
@@ -28,6 +29,23 @@ describe("flipBitsSpec", () => {
     const tm = run(makeInitSnapshot(flipBitsSpec, ["0", "1", "0", "1", "1"]));
     expect(getStatus(tm)).toBe("accept");
     expect(tm.tape).toEqual(["1", "0", "1", "0", "0", "_"]);
+  });
+});
+
+describe("doubleXSpec", () => {
+  function makeXTape(n: number): ("$" | "X")[] {
+    return ["$", ...Array.from({ length: n }, (): "X" => "X")];
+  }
+
+  function expectedTape(n: number): ("$" | "X" | "_")[] {
+    if (n === 0) return ["$", "_"];
+    return ["$", ...Array.from({ length: 2 * n }, (): "X" => "X"), "_"];
+  }
+
+  it.each([0, 1, 2, 3])("doubles %i X's", (n) => {
+    const tm = run(makeInitSnapshot(doubleXSpec, makeXTape(n)));
+    expect(getStatus(tm)).toBe("accept");
+    expect(tm.tape).toEqual(expectedTape(n));
   });
 });
 
