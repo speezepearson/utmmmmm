@@ -180,7 +180,7 @@ export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
     [pushHistory],
   );
 
-  const { playing, toggle, fps, setFps } = usePlayPause({ onSteps });
+  const playPause = usePlayPause({ onSteps });
 
   const halted = utmStatus !== "running";
 
@@ -208,8 +208,8 @@ export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
         <button onClick={doStepState} disabled={halted}>
           Step State
         </button>
-        <button onClick={toggle} disabled={halted}>
-          {playing ? "Pause" : "Play"}
+        <button onClick={playPause.toggle} disabled={halted}>
+          {playPause.playing ? "Pause" : "Play"}
         </button>
         <button onClick={rewind} disabled={!canRewind}>
           Rewind
@@ -217,8 +217,8 @@ export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
         <button onClick={reset}>Reset</button>
         <LogSlider
           label="FPS"
-          value={fps}
-          onChange={setFps}
+          value={playPause.fps}
+          onChange={playPause.setFps}
           min={1}
           max={1e7}
         />

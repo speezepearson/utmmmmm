@@ -73,7 +73,7 @@ function useTuringMachine<State extends string, Symbol extends string>(
     status,
     doStep,
     reset,
-    ...playPause,
+    playPause,
   };
 }
 
@@ -86,8 +86,10 @@ export function TuringMachineViewer<
   State extends string,
   Symbol extends string,
 >({ spec, initialTape }: TuringMachineViewerProps<State, Symbol>) {
-  const { snapshot, status, playing, toggle, fps, setFps, doStep, reset } =
-    useTuringMachine(spec, initialTape);
+  const { snapshot, status, playPause, doStep, reset } = useTuringMachine(
+    spec,
+    initialTape,
+  );
 
   const halted = status !== "running";
 
@@ -105,14 +107,14 @@ export function TuringMachineViewer<
         <button onClick={doStep} disabled={halted}>
           Step
         </button>
-        <button onClick={toggle} disabled={halted}>
-          {playing ? "Pause" : "Play"}
+        <button onClick={playPause.toggle} disabled={halted}>
+          {playPause.playing ? "Pause" : "Play"}
         </button>
         <button onClick={reset}>Reset</button>
         <LogSlider
           label="FPS"
-          value={fps}
-          onChange={setFps}
+          value={playPause.fps}
+          onChange={playPause.setFps}
           min={1}
           max={10000000}
         />
