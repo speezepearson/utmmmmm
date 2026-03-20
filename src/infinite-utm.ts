@@ -59,7 +59,7 @@ const header = (() => {
   const headerEnd = must(tapeIndexOf(baseUtm.tape, "^"));
   return Array.from({ length: headerEnd }, (_, i) => must(baseUtm.tape.get(i)));
 })();
-const nSymBits = numBits(myUtmSpec.allStates.length);
+const nSymBits = numBits(myUtmSpec.allSymbols.length);
 const cellSize = 1 + nSymBits;
 
 function infiniteUtmTapeBackground(idx: TapeIdx): MyUtmSymbol {
