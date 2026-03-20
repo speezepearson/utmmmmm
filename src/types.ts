@@ -42,7 +42,11 @@ export function makeSimpleTapeOverlay<Symbol extends string>(
       return writes.get(i) ?? background(i);
     },
     set(i: TapeIdx, sym: Symbol): void {
-      writes.set(i, sym);
+      if (sym === background(i)) {
+        writes.delete(i);
+      } else {
+        writes.set(i, sym);
+      }
     },
     clone(): TapeOverlay<Symbol> {
       return makeSimpleTapeOverlay(background, new Map(writes));
