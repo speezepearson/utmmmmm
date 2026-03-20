@@ -3,6 +3,7 @@ import { TuringMachineViewer } from "./TuringMachineViewer";
 import { MyUTMViewer } from "./UTMViewer";
 import {
   checkPalindromeSpec,
+  doubleXSpec,
   flipBitsSpec,
   write1sForeverSpec,
 } from "./toy-machines";
@@ -16,7 +17,11 @@ function App() {
 
   const initialTape = useMemo(
     () =>
-      tapeInput.split("").filter((c): c is "a" | "b" => c === "a" || c === "b"),
+      makeArrayTapeOverlay(
+        tapeInput
+          .split("")
+          .filter((c): c is "a" | "b" => c === "a" || c === "b"),
+      ),
     [tapeInput],
   );
 
@@ -40,15 +45,27 @@ function App() {
       />
 
       <h2 style={{ marginTop: "32px" }}>Write 1s Forever</h2>
-      <TuringMachineViewer spec={write1sForeverSpec} initialTape={[]} />
+      <TuringMachineViewer
+        spec={write1sForeverSpec}
+        initialTape={makeArrayTapeOverlay([])}
+      />
+
+      <h2 style={{ marginTop: "32px" }}>Double X</h2>
+      <TuringMachineViewer
+        spec={doubleXSpec}
+        initialTape={makeArrayTapeOverlay([
+          "$",
+          ...Array.from({ length: 100 }, () => "X"),
+        ])}
+      />
 
       <h2 style={{ marginTop: "32px" }}>UTM Simulation</h2>
-      <MyUTMViewer
+      {/* <MyUTMViewer
         key={tapeInput + "-utm"}
         initialSim={myUtmSpec.encode(
           makeInitSnapshot(flipBitsSpec, makeArrayTapeOverlay(["0", "1"])),
         )}
-      />
+      /> */}
     </div>
   );
 }
