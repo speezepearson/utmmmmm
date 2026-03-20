@@ -1,203 +1,34 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { LogSlider } from "./LogSlider";
-import { MyUtmSnapshot, myUtmSpec } from "./my-utm-spec";
 import { TapeView } from "./TapeView";
-import {
-  type TuringMachineSnapshot,
-  copySnapshot,
-  getStatus,
-  step,
-} from "./types";
-import { usePlayPause } from "./usePlayPause";
+import { type UtmSnapshot } from "./types";
+import { useTuringMachine } from "./useTuringMachine";
 
-type MyUTMViewerProps<SimState extends string, SimSymbol extends string> = {
-  initialSim: TuringMachineSnapshot<SimState, SimSymbol>;
-  optimizationHints?: Array<[SimState, SimSymbol]>;
+type UTMViewerProps<
+  UState extends string,
+  USymbol extends string,
+  SimState extends string,
+  SimSymbol extends string,
+> = {
+  init: UtmSnapshot<UState, USymbol, SimState, SimSymbol>;
 };
 
-export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
-  initialSim,
-  optimizationHints,
-}: MyUTMViewerProps<SimState, SimSymbol>) {
-  const makeInitial = useCallback(() => {
-    const utmSnapshot = myUtmSpec.encode(initialSim, {
-      optimizationHints,
-    }) as MyUtmSnapshot<SimState, SimSymbol>;
-    if (!(utmSnapshot instanceof MyUtmSnapshot)) {
-      throw new Error("utmSnapshot is not a MyUtmSnapshot???");
-    }
-    const decoded = utmSnapshot.decode({ sparse: false });
-    return { utmSnapshot, decoded };
-  }, [initialSim, optimizationHints]);
+export function UTMViewer<
+  UState extends string,
+  USymbol extends string,
+  SimState extends string,
+  SimSymbol extends string,
+>({ init }: UTMViewerProps<UState, USymbol, SimState, SimSymbol>) {
+  const { snapshot, status, playPause, doStep, reset } = useTuringMachine(init);
 
-  const [utmSnapshot, setUtmSnapshot] = useState(
-    () => makeInitial().utmSnapshot,
-  );
-  const [utmStatus, setUtmStatus] = useState<"accept" | "reject" | "running">(
-    "running",
-  );
-  const [lastDecoded, setLastDecoded] = useState<TuringMachineSnapshot<
-    SimState,
-    SimSymbol
-  > | null>(() => makeInitial().decoded ?? null);
-  const [visibleRadius, setVisibleRadius] = useState(25);
-  const [stepCount, setStepCount] = useState(0);
-
-  const utmRef = useRef(utmSnapshot);
-  const statusRef = useRef(utmStatus);
-  const lastDecodedRef = useRef(lastDecoded);
-  const stepCountRef = useRef(0);
-
-  useEffect(() => {
-    utmRef.current = utmSnapshot;
-  }, [utmSnapshot]);
-  useEffect(() => {
-    statusRef.current = utmStatus;
-  }, [utmStatus]);
-  useEffect(() => {
-    lastDecodedRef.current = lastDecoded;
-  }, [lastDecoded]);
-  useEffect(() => {
-    stepCountRef.current = stepCount;
-  }, [stepCount]);
-
-  const MAX_HISTORY = 20;
-  const historyRef = useRef<
-    {
-      snap: MyUtmSnapshot<SimState, SimSymbol>;
-      decoded: TuringMachineSnapshot<SimState, SimSymbol> | null;
-      stepCount: number;
-    }[]
-  >([]);
-  const [canRewind, setCanRewind] = useState(false);
-
-  const pushHistory = useCallback(() => {
-    const h = historyRef.current;
-    h.push({
-      snap: new MyUtmSnapshot(utmRef.current),
-      decoded: lastDecodedRef.current
-        ? copySnapshot(lastDecodedRef.current)
-        : null,
-      stepCount: stepCountRef.current,
-    });
-    if (h.length > MAX_HISTORY) h.shift();
-    setCanRewind(true);
-  }, []);
-
-  const publishUtm = useCallback(
-    (snap: MyUtmSnapshot<SimState, SimSymbol>, steps: number) => {
-      const st = getStatus(snap);
-      utmRef.current = snap;
-      statusRef.current = st;
-      setUtmSnapshot(snap);
-      setUtmStatus(st);
-      setStepCount((c) => c + steps);
-      const decoded = snap.decode({ sparse: false });
-      if (decoded) {
-        lastDecodedRef.current = decoded;
-        setLastDecoded(decoded);
-      }
-    },
-    [],
-  );
-
-  // Single step
-  const doStep = useCallback(() => {
-    if (statusRef.current !== "running") return;
-    pushHistory();
-    const next = utmRef.current;
-    step(next);
-    publishUtm(next, 1);
-  }, [pushHistory, publishUtm]);
-
-  // Step until UTM state changes
-  const doStepState = useCallback(() => {
-    if (statusRef.current !== "running") return;
-    pushHistory();
-    const snap = new MyUtmSnapshot(utmRef.current);
-    const startState = snap.state;
-
-    let steps = 0;
-    while (getStatus(snap) === "running") {
-      step(snap);
-      steps++;
-      if (snap.state !== startState) break;
-    }
-
-    publishUtm(snap, steps);
-  }, [pushHistory, publishUtm]);
-
-  const reset = useCallback(() => {
-    const { utmSnapshot: snap, decoded } = makeInitial();
-    utmRef.current = snap;
-    statusRef.current = "running";
-    lastDecodedRef.current = decoded ?? null;
-    setUtmSnapshot(snap);
-    setUtmStatus("running");
-    setLastDecoded(decoded ?? null);
-    setStepCount(0);
-    historyRef.current = [];
-    setCanRewind(false);
-  }, [makeInitial]);
-
-  const rewind = useCallback(() => {
-    const h = historyRef.current;
-    const entry = h.pop();
-    if (!entry) return;
-    utmRef.current = entry.snap;
-    statusRef.current = "running";
-    lastDecodedRef.current = entry.decoded;
-    setUtmSnapshot(entry.snap);
-    setUtmStatus("running");
-    setLastDecoded(entry.decoded);
-    setStepCount(entry.stepCount);
-    setCanRewind(h.length > 0);
-  }, []);
-
-  const onSteps = useCallback(
-    (count: number, stopAtMs: number) => {
-      if (statusRef.current !== "running") return false;
-      pushHistory();
-      const snap = new MyUtmSnapshot(utmRef.current);
-      for (let i = 0; i < count; i++) {
-        stepCountRef.current++;
-        if (getStatus(step(snap)) !== "running") break;
-        if (i % 1e4 === 0 && performance.now() >= stopAtMs) break;
-      }
-      const st = getStatus(snap);
-      utmRef.current = snap;
-      statusRef.current = st;
-      setUtmSnapshot(snap);
-      setUtmStatus(st);
-      setStepCount(stepCountRef.current);
-      const decoded = snap.decode({ sparse: false });
-      if (decoded) {
-        lastDecodedRef.current = decoded;
-        setLastDecoded(decoded);
-      }
-      return st === "running";
-    },
-    [pushHistory],
-  );
-
-  const playPause = usePlayPause({ onSteps });
-
-  const halted = utmStatus !== "running";
+  const halted = status !== "running";
 
   return (
     <div className="tm-viewer">
-      <div className="utm-status-line">
-        UTM step: {stepCount} | UTM state: {utmSnapshot.state} | head:{" "}
-        {utmSnapshot.pos}
-      </div>
-
-      <TapeView tm={utmSnapshot} radius={visibleRadius} />
-
-      {lastDecoded && <TapeView tm={lastDecoded} radius={visibleRadius} />}
+      <TapeView tm={snapshot} radius={40} />
 
       {halted && (
-        <div className={`tm-result tm-result-${utmStatus}`}>
-          UTM {utmStatus.toUpperCase()}
+        <div className={`tm-result tm-result-${status}`}>
+          {status.toUpperCase()}
         </div>
       )}
 
@@ -205,14 +36,8 @@ export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
         <button onClick={doStep} disabled={halted}>
           Step
         </button>
-        <button onClick={doStepState} disabled={halted}>
-          Step State
-        </button>
         <button onClick={playPause.toggle} disabled={halted}>
           {playPause.playing ? "Pause" : "Play"}
-        </button>
-        <button onClick={rewind} disabled={!canRewind}>
-          Rewind
         </button>
         <button onClick={reset}>Reset</button>
         <LogSlider
@@ -220,14 +45,7 @@ export function MyUTMViewer<SimState extends string, SimSymbol extends string>({
           value={playPause.fps}
           onChange={playPause.setFps}
           min={1}
-          max={1e7}
-        />
-        <LogSlider
-          label="Radius"
-          value={visibleRadius}
-          onChange={setVisibleRadius}
-          min={1}
-          max={1000}
+          max={10000000}
         />
       </div>
     </div>

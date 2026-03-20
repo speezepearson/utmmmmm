@@ -1,30 +1,56 @@
 import { useMemo, useState } from "react";
 import "./App.css";
 import { TuringMachineViewer } from "./TuringMachineViewer";
-import { MyUTMViewer } from "./UTMViewer";
-import { infiniteUtmTapeBackground } from "./infinite-utm";
+import { UTMViewer } from "./UTMViewer";
 import { myUtmSpec } from "./my-utm-spec";
-import myUtmOptimizationHints from "./my-utm-spec-transition-optimization-hints";
 import {
   checkPalindromeSpec,
   doubleXSpec,
+  flipBitsSpec,
   write1sForeverSpec,
 } from "./toy-machines";
-import { makeInitSnapshot, makeSimpleTapeOverlay } from "./types";
+import { makeInitSnapshot } from "./types";
 import { makeArrayTapeOverlay } from "./util";
 
 function App() {
   const [palindromeInput, setPalindromeInput] = useState("abba");
-  const [doubleXCount, setDoubleXCount] = useState(5);
-
-  const initialTape = useMemo(
+  const initialPalindromeSnapshot = useMemo(
     () =>
-      makeArrayTapeOverlay(
-        palindromeInput
-          .split("")
-          .filter((c): c is "a" | "b" => c === "a" || c === "b"),
+      makeInitSnapshot(
+        checkPalindromeSpec,
+        makeArrayTapeOverlay(
+          palindromeInput
+            .split("")
+            .filter((c): c is "a" | "b" => c === "a" || c === "b"),
+        ),
       ),
     [palindromeInput],
+  );
+
+  const [doubleXCount, setDoubleXCount] = useState(5);
+  const initialDoubleXSnapshot = useMemo(
+    () =>
+      makeInitSnapshot(
+        doubleXSpec,
+        makeArrayTapeOverlay([
+          "$",
+          ...Array.from({ length: doubleXCount }, () => "X"),
+        ]),
+      ),
+    [doubleXCount],
+  );
+
+  const initialWrite1sForeverSnapshot = useMemo(
+    () => makeInitSnapshot(write1sForeverSpec, makeArrayTapeOverlay([])),
+    [],
+  );
+
+  const initUtmSnapshot = useMemo(
+    () =>
+      myUtmSpec.encode(
+        makeInitSnapshot(flipBitsSpec, makeArrayTapeOverlay(["0", "1"])),
+      ),
+    [],
   );
 
   return (
@@ -42,15 +68,11 @@ function App() {
       </label>
       <TuringMachineViewer
         key={palindromeInput}
-        spec={checkPalindromeSpec}
-        initialTape={initialTape}
+        init={initialPalindromeSnapshot}
       />
 
       <h2 style={{ marginTop: "32px" }}>Write 1s Forever</h2>
-      <TuringMachineViewer
-        spec={write1sForeverSpec}
-        initialTape={makeArrayTapeOverlay([])}
-      />
+      <TuringMachineViewer init={initialWrite1sForeverSnapshot} />
 
       <h2 style={{ marginTop: "32px" }}>Double X</h2>
       <label className="tm-tape-input">
@@ -65,24 +87,10 @@ function App() {
           onChange={(e) => setDoubleXCount(Number(e.target.value))}
         />
       </label>
-      <TuringMachineViewer
-        key={doubleXCount}
-        spec={doubleXSpec}
-        initialTape={makeArrayTapeOverlay([
-          "$",
-          ...Array.from({ length: doubleXCount }, () => "X"),
-        ])}
-      />
+      <TuringMachineViewer key={doubleXCount} init={initialDoubleXSnapshot} />
 
       <h2 style={{ marginTop: "32px" }}>UTM Simulation</h2>
-      <MyUTMViewer
-        key={palindromeInput + "-utm"}
-        initialSim={makeInitSnapshot(
-          myUtmSpec,
-          makeSimpleTapeOverlay(infiniteUtmTapeBackground),
-        )}
-        optimizationHints={myUtmOptimizationHints}
-      />
+      <UTMViewer init={initUtmSnapshot} />
     </div>
   );
 }

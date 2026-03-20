@@ -1,95 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import { LogSlider } from "./LogSlider";
 import { TapeView } from "./TapeView";
-import {
-  getStatus,
-  makeInitSnapshot,
-  step,
-  type TapeOverlay,
-  type TuringMachineSnapshot,
-  type TuringMachineSpec,
-} from "./types";
-import { usePlayPause } from "./usePlayPause";
-
-function useTuringMachine<State extends string, Symbol extends string>(
-  spec: TuringMachineSpec<State, Symbol>,
-  initialTape: TapeOverlay<Symbol>,
-) {
-  const [snapshot, setSnapshot] = useState(() =>
-    makeInitSnapshot(spec, initialTape),
-  );
-  const [status, setStatus] = useState<"accept" | "reject" | "running">(
-    "running",
-  );
-
-  const snapRef = useRef(snapshot);
-  const statusRef = useRef(status);
-
-  useEffect(() => {
-    snapRef.current = snapshot;
-  }, [snapshot]);
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
-
-  const publish = useCallback((snap: TuringMachineSnapshot<State, Symbol>) => {
-    const st = getStatus(snap);
-    snapRef.current = snap;
-    statusRef.current = st;
-    setSnapshot({ ...snap });
-    setStatus(st);
-  }, []);
-
-  const doStep = useCallback(() => {
-    if (statusRef.current !== "running") return;
-    step(snapRef.current);
-    publish(snapRef.current);
-  }, [publish]);
-
-  const reset = useCallback(() => {
-    const snap = makeInitSnapshot(spec, initialTape.clone());
-    publish(snap);
-  }, [spec, initialTape, publish]);
-
-  const onSteps = useCallback(
-    (count: number, stopAtMs: number) => {
-      if (statusRef.current !== "running") return false;
-      const snap = snapRef.current;
-      for (let i = 0; i < count; i++) {
-        step(snap);
-        if (getStatus(snap) !== "running") break;
-        if (i % 1e4 === 0 && performance.now() >= stopAtMs) break;
-      }
-      publish(snap);
-      return getStatus(snap) === "running";
-    },
-    [publish],
-  );
-
-  const playPause = usePlayPause({ onSteps });
-
-  return {
-    snapshot,
-    status,
-    doStep,
-    reset,
-    playPause,
-  };
-}
+import { type TuringMachineSnapshot } from "./types";
+import { useTuringMachine } from "./useTuringMachine";
 
 type TuringMachineViewerProps<State extends string, Symbol extends string> = {
-  spec: TuringMachineSpec<State, Symbol>;
-  initialTape: TapeOverlay<Symbol>;
+  init: TuringMachineSnapshot<State, Symbol>;
 };
 
 export function TuringMachineViewer<
   State extends string,
   Symbol extends string,
->({ spec, initialTape }: TuringMachineViewerProps<State, Symbol>) {
-  const { snapshot, status, playPause, doStep, reset } = useTuringMachine(
-    spec,
-    initialTape,
-  );
+>({ init }: TuringMachineViewerProps<State, Symbol>) {
+  const { snapshot, status, playPause, doStep, reset } = useTuringMachine(init);
 
   const halted = status !== "running";
 
