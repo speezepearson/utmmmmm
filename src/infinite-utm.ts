@@ -7,8 +7,13 @@ import {
   type MyUtmSymbol,
 } from "./my-utm-spec";
 import myUtmOptimizationHints from "./my-utm-spec-transition-optimization-hints";
-import { makeInitSnapshot, type TapeOverlay } from "./types";
-import { indexOf, makeArrayTapeOverlay, must, tapeIndexOf } from "./util";
+import { makeInitSnapshot, type TapeIdx, type TapeOverlay } from "./types";
+import {
+  makeArrayTapeOverlay,
+  must,
+  mustSymbolIndex,
+  tapeIndexOf,
+} from "./util";
 
 export class InfiniteUtm extends MyUtmSnapshot<MyUtmState, MyUtmSymbol> {
   constructor({
@@ -16,7 +21,7 @@ export class InfiniteUtm extends MyUtmSnapshot<MyUtmState, MyUtmSymbol> {
     state = myUtmSpec.initial,
     tape = makeInfiniteUtmTape(),
   }: {
-    pos?: number;
+    pos?: TapeIdx;
     state?: MyUtmState;
     tape?: TapeOverlay<MyUtmSymbol>;
   } = {}) {
@@ -52,7 +57,7 @@ const header = (() => {
 const nSymBits = numBits(myUtmSpec.allStates.length);
 const cellSize = 1 + nSymBits;
 
-function getBackgroundAt(idx: number): MyUtmSymbol {
+function getBackgroundAt(idx: TapeIdx): MyUtmSymbol {
   if (idx < header.length) return header[idx];
   const cellIdx = Math.floor((idx - header.length) / cellSize);
   const within = (idx - header.length) % cellSize;
@@ -60,21 +65,21 @@ function getBackgroundAt(idx: number): MyUtmSymbol {
     return cellIdx === 0 ? "^" : ",";
   }
   const x = toBinary(
-    must(indexOf(myUtmSpec.allSymbols, getBackgroundAt(cellIdx))),
+    mustSymbolIndex(myUtmSpec.allSymbols, getBackgroundAt(cellIdx)),
     nSymBits,
   );
   return x[within - 1];
 }
 
 function makeInfiniteUtmTape(
-  overrides?: Map<number, MyUtmSymbol>,
+  overrides?: Map<TapeIdx, MyUtmSymbol>,
 ): TapeOverlay<MyUtmSymbol> {
-  overrides ??= new Map<number, MyUtmSymbol>();
+  overrides ??= new Map<TapeIdx, MyUtmSymbol>();
   return {
-    get(idx: number): MyUtmSymbol | undefined {
+    get(idx: TapeIdx): MyUtmSymbol | undefined {
       return overrides.get(idx) ?? getBackgroundAt(idx);
     },
-    set(idx: number, sym: MyUtmSymbol): void {
+    set(idx: TapeIdx, sym: MyUtmSymbol): void {
       overrides.set(idx, sym);
     },
     clone(): TapeOverlay<MyUtmSymbol> {

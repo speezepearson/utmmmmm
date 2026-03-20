@@ -1,13 +1,11 @@
-import type { TuringMachineSnapshot, TuringMachineSpec } from "./types";
+import {
+  type StateIdx,
+  type SymbolIdx,
+  type TapeIdx,
+  type TuringMachineSnapshot,
+  type TuringMachineSpec,
+} from "./types";
 import { makeArrayTapeOverlay } from "./util";
-
-// ════════════════════════════════════════════════════════════════════
-// Branded index types
-// ════════════════════════════════════════════════════════════════════
-declare const StateIdxBrand: unique symbol;
-declare const SymbolIdxBrand: unique symbol;
-export type StateIdx = number & { readonly [StateIdxBrand]: true };
-export type SymbolIdx = number & { readonly [SymbolIdxBrand]: true };
 
 // ════════════════════════════════════════════════════════════════════
 // Compiled machine
@@ -37,8 +35,8 @@ export type CompiledSnapshot = {
   state: StateIdx;
   tape: Int32Array;
   /** Number of valid cells in tape (tape.length may be larger due to pre-allocation). */
-  tapeLen: number;
-  pos: number;
+  tapeLen: TapeIdx;
+  pos: TapeIdx;
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -118,7 +116,7 @@ export function compile<State extends string, Symbol extends string>(
 export function compileSnapshot<State extends string, Symbol extends string>(
   snapshot: TuringMachineSnapshot<State, Symbol>,
   machine: CompiledMachine,
-  tapeExtent?: number,
+  tapeExtent?: TapeIdx,
 ): CompiledSnapshot {
   const { state, tape, pos } = snapshot;
 
@@ -134,7 +132,7 @@ export function compileSnapshot<State extends string, Symbol extends string>(
   }
 
   // Determine how many cells to read
-  let numCells: number;
+  let numCells: TapeIdx;
   if (tapeExtent !== undefined) {
     numCells = tapeExtent;
   } else {

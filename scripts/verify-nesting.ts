@@ -1,20 +1,23 @@
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
+import {
+  MyUtmSnapshot,
+  type MyUtmState,
+  type MyUtmSymbol,
+} from "../src/my-utm-spec";
+import myUtmOptimizationHints from "../src/my-utm-spec-transition-optimization-hints";
 import { flipBitsSpec } from "../src/toy-machines";
 import {
+  type StateIdx,
+  type SymbolIdx,
+  type TapeIdx,
   type TapeOverlay,
   copySnapshot,
   getStatus,
   makeInitSnapshot,
   step,
 } from "../src/types";
-import {
-  MyUtmSnapshot,
-  type MyUtmState,
-  type MyUtmSymbol,
-} from "../src/my-utm-spec";
 import { makeArrayTapeOverlay, runUntilInnerStep } from "../src/util";
-import { isDeepStrictEqual } from "node:util";
-import myUtmOptimizationHints from "../src/my-utm-spec-transition-optimization-hints";
 
 /** Materialize a TapeOverlay into a concrete array (reads until get() returns undefined). */
 function materializeTape<S extends string>(tape: TapeOverlay<S>): S[] {
@@ -38,13 +41,13 @@ type Savepoint = {
   sim: {
     state: MyUtmState;
     tape: MyUtmSymbol[];
-    pos: number;
+    pos: TapeIdx;
   };
 };
 
 let sim: MyUtmSnapshot<
-  (typeof flipBitsSpec)["allStates"][number],
-  (typeof flipBitsSpec)["allSymbols"][number]
+  (typeof flipBitsSpec)["allStates"][StateIdx],
+  (typeof flipBitsSpec)["allSymbols"][SymbolIdx]
 >;
 let real: MyUtmSnapshot<MyUtmState, MyUtmSymbol>;
 let innerSteps: number;

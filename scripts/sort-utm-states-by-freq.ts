@@ -1,16 +1,21 @@
+import { compile, compileSnapshot, fastStep } from "../src/fast-run";
 import {
   myUtmSpec,
   type MyUtmState,
   type MyUtmSymbol,
 } from "../src/my-utm-spec";
-import { flipBitsSpec } from "../src/toy-machines";
-import { getStatus, makeInitSnapshot, step, type UtmSpec } from "../src/types";
-import { makeArrayTapeOverlay } from "../src/util";
 import myUtmOptimizationHints from "../src/my-utm-spec-transition-optimization-hints";
+import { flipBitsSpec } from "../src/toy-machines";
+import {
+  makeInitSnapshot,
+  type StateIdx,
+  type SymbolIdx,
+  type UtmSpec,
+} from "../src/types";
+import { makeArrayTapeOverlay } from "../src/util";
 
 type Stats<State extends string, Symbol extends string> = {
   steps: number;
-  innerSteps: number;
   transitions: {
     counts: Map<State, Map<Symbol, number>>;
     sortedByFreqAsc: Array<[State, Symbol]>;
@@ -76,7 +81,7 @@ function deepEntries<K1, K2, V>(
 
 function getStats<State extends string, Symbol extends string>(
   utmSpec: UtmSpec<State, Symbol>,
-  maxInnerSteps: number,
+  maxSteps: number,
   optimizationHints: Array<[State, Symbol]> = [],
 ): Stats<State, Symbol> {
   let base;
@@ -87,32 +92,31 @@ function getStats<State extends string, Symbol extends string>(
   }
   const simulator = utmSpec.encode(base, { optimizationHints });
   const doubleSimulator = utmSpec.encode(simulator, { optimizationHints });
-  let steps = 0;
-  let innerSteps = 0;
-  const transitionCounts: Map<State, Map<Symbol, number>> = new Map();
 
-  while (true) {
-    if (getStatus(step(doubleSimulator)) !== "running") {
-      break;
-    }
-    const sym = doubleSimulator.tape.get(doubleSimulator.pos) ?? utmSpec.blank;
-    incrementCount(transitionCounts, doubleSimulator.state, sym);
+  const rawTransitionCounts: Map<StateIdx, Map<SymbolIdx, number>> = new Map();
 
-    const decoded = doubleSimulator.decode();
-    if (decoded && decoded.pos !== simulator.pos) {
-      innerSteps++;
-      console.error(`tick ${innerSteps}/${maxInnerSteps}`);
-      if (innerSteps === maxInnerSteps) break;
-    }
-    steps++;
+  const compiledMachine = compile(doubleSimulator.spec);
+  const compiled = compileSnapshot(doubleSimulator, compiledMachine);
+  for (let i = 0; i < maxSteps; i++) {
+    const sym = compiled.tape[compiled.pos] ?? compiledMachine.blankIdx;
+    incrementCount(rawTransitionCounts, compiled.state, sym);
+    fastStep(compiled);
   }
 
-  console.log(`took ${steps} steps`);
+  const transitionCounts = new Map<State, Map<Symbol, number>>();
+  for (const [stateIdx, syms] of rawTransitionCounts.entries()) {
+    const state = compiledMachine.stateNames[stateIdx] as State;
+    const m = new Map<Symbol, number>();
+    transitionCounts.set(state, m);
+    for (const [symIdx, count] of syms.entries()) {
+      const sym = compiledMachine.symbolNames[symIdx] as Symbol;
+      m.set(sym, count);
+    }
+  }
   const transitionFreqs = getFreqInfo(transitionCounts);
 
   return {
-    steps,
-    innerSteps,
+    steps: maxSteps,
     transitions: {
       counts: transitionCounts,
       sortedByFreqAsc: deepEntries(transitionFreqs)
@@ -124,12 +128,12 @@ function getStats<State extends string, Symbol extends string>(
 }
 
 let lastStats: Stats<MyUtmState, MyUtmSymbol> | undefined;
-let nInnerSteps = 4;
+let maxSteps = 1e10;
 while (true) {
   const t0 = performance.now();
   const stats = getStats(
     myUtmSpec,
-    nInnerSteps,
+    maxSteps,
     lastStats?.transitions.sortedByFreqAsc ?? myUtmOptimizationHints,
   );
   const t1 = performance.now();
@@ -137,51 +141,6 @@ while (true) {
   console.log(`took ${t1 - t0}ms`);
   console.log("transitions recommendation:");
   console.log("  ", JSON.stringify(stats.transitions.sortedByFreqAsc));
-  // if (lastStats) {
-  //   const lastStatsConst = lastStats;
-
-  //   // STATES
-  //   const lastStateFreq = (st: MyUtmState) =>
-  //     lastStatsConst.states.freqStats[st]?.freq ?? 0;
-  //   const newStateFreq = (st: MyUtmState) =>
-  //     stats.states.freqStats[st]?.freq ?? 0;
-  //   const changedStates = spec.allStates.filter(
-  //     (st) =>
-  //       percentageDiff(lastStateFreq(st), newStateFreq(st)) > 1 &&
-  //       newStateFreq(st) > 1 / (10 * spec.allStates.length),
-  //   );
-  //   console.log(`${changedStates.length} states changed:`);
-  //   for (const st of changedStates) {
-  //     console.log(
-  //       `  ${st.padEnd(20)} ${lastStateFreq(st).toFixed(6)} -> ${newStateFreq(st).toFixed(6)} (${percentageDiff(lastStateFreq(st), newStateFreq(st)).toFixed(2)}%)`,
-  //     );
-  //   }
-  //   if (changedStates.length === 0) {
-  //     console.log("reached fixed point, or close enough");
-  //     break;
-  //   }
-
-  //   // SYMBOLS
-  //   const lastSymbolFreq = (st: MyUtmSymbol) =>
-  //     lastStatsConst.symbols.freqStats[st]?.freq ?? 0;
-  //   const newSymbolFreq = (st: MyUtmSymbol) =>
-  //     stats.symbols.freqStats[st]?.freq ?? 0;
-  //   const changedSymbols = spec.allSymbols.filter(
-  //     (st) =>
-  //       percentageDiff(lastSymbolFreq(st), newSymbolFreq(st)) > 1 &&
-  //       newSymbolFreq(st) > 1 / (10 * spec.allSymbols.length),
-  //   );
-  //   console.log(`${changedSymbols.length} symbols changed:`);
-  //   for (const st of changedSymbols) {
-  //     console.log(
-  //       `  ${st.padEnd(20)} ${lastSymbolFreq(st).toFixed(6)} -> ${newSymbolFreq(st).toFixed(6)} (${percentageDiff(lastSymbolFreq(st), newSymbolFreq(st)).toFixed(2)}%)`,
-  //     );
-  //   }
-  //   if (changedSymbols.length === 0) {
-  //     console.log("reached fixed point, or close enough");
-  //     break;
-  //   }
-  // }
   lastStats = stats;
-  nInnerSteps *= 2;
+  maxSteps *= 2;
 }

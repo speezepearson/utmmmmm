@@ -15,6 +15,8 @@ export interface TuringMachineSpec<
   readonly rules: ReadonlyMap<State, ReadonlyMap<Symbol, [State, Symbol, Dir]>>;
 }
 
+export type TapeIdx = number;
+
 /** A TapeOverlay represents an overlay on top of a tape full of blanks.
  * It can be lazily loaded; it can stretch off to infinity; it can have holes in it.
  * (The overlay does not know what the blank symbol is: that's the job of the TuringMachineSpec.)
@@ -27,8 +29,8 @@ export interface TuringMachineSpec<
  *    that is, `overlay.get(0) === 1`, `overlay.get(1) === 0`, etc.)
  */
 export type TapeOverlay<Symbol extends string> = {
-  get(i: number): Symbol | undefined;
-  set(i: number, sym: Symbol): void;
+  get(i: TapeIdx): Symbol | undefined;
+  set(i: TapeIdx, sym: Symbol): void;
   clone(): TapeOverlay<Symbol>;
 };
 
@@ -39,7 +41,7 @@ export type TuringMachineSnapshot<
   spec: TuringMachineSpec<State, Symbol>;
   state: State;
   tape: TapeOverlay<Symbol>;
-  pos: number;
+  pos: TapeIdx;
 };
 
 export function makeInitSnapshot<State extends string, Symbol extends string>(
@@ -94,7 +96,7 @@ export function step<State extends string, Symbol extends string>(
   if (dir === "L" && pos === 0) {
     throw new Error("Can't step machine; already at left edge of tape");
   }
-  tm.pos = { L: pos - 1, R: pos + 1 }[dir];
+  tm.pos = pos + { L: -1, R: +1 }[dir];
 
   return tm;
 }
@@ -149,3 +151,12 @@ export type UtmSnapshot<
 export function assertNever(x: never): never {
   throw new Error(`Unexpected value: ${x}`);
 }
+
+// ════════════════════════════════════════════════════════════════════
+// Branded index types
+// ════════════════════════════════════════════════════════════════════
+
+declare const StateIdxBrand: unique symbol;
+declare const SymbolIdxBrand: unique symbol;
+export type StateIdx = number & { readonly [StateIdxBrand]: true };
+export type SymbolIdx = number & { readonly [SymbolIdxBrand]: true };

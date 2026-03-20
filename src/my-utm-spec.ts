@@ -1,12 +1,21 @@
 import {
   type Dir,
+  type StateIdx,
+  type SymbolIdx,
+  type TapeIdx,
   type TapeOverlay,
   type TuringMachineSnapshot,
   type TuringMachineSpec,
   type UtmSnapshot,
   type UtmSpec,
 } from "./types";
-import { must, tapeIndexOf } from "./util";
+import {
+  indexOf,
+  must,
+  mustStateIndex,
+  mustSymbolIndex,
+  tapeIndexOf,
+} from "./util";
 
 // ════════════════════════════════════════════════════════════════════
 // UTM Alphabet
@@ -38,7 +47,10 @@ export function numBits(count: number): number {
   return Math.max(1, Math.ceil(Math.log2(Math.max(2, count))));
 }
 
-export function toBinary(index: number, width: number): ("1" | "0")[] {
+export function toBinary(
+  index: StateIdx | SymbolIdx,
+  width: number,
+): ("1" | "0")[] {
   const bits: ("1" | "0")[] = [];
   for (let i = width - 1; i >= 0; i--) {
     bits.push(((index >> i) & 1) === 1 ? "1" : "0");
@@ -49,7 +61,7 @@ export function toBinary(index: number, width: number): ("1" | "0")[] {
 /** Read `width` bits from a TapeOverlay starting at `start` and interpret as a binary number. */
 function fromBinaryAt(
   tape: TapeOverlay<MyUtmSymbol>,
-  start: number,
+  start: TapeIdx,
   width: number,
 ): number {
   let val = 0;
@@ -100,10 +112,10 @@ function encodeToTape<SimState extends string, SimSymbol extends string>(
   optimizationHints: Array<[SimState, SimSymbol]> = [],
 ): TapeOverlay<MyUtmSymbol> {
   const { spec, state, tape, pos } = snapshot;
-  const stateIdx = spec.allStates.indexOf(state);
+  const stateIdx = mustStateIndex(spec.allStates, state);
   const sBits = numBits(spec.allStates.length);
   const symBits = numBits(spec.allSymbols.length);
-  const blankIdx = spec.allSymbols.indexOf(spec.blank);
+  const blankIdx = mustSymbolIndex(spec.allSymbols, spec.blank);
 
   /** The header portion of the UTM tape (everything before the TAPE section cells). */
   const header: MyUtmSymbol[] = [];
@@ -131,18 +143,21 @@ function encodeToTape<SimState extends string, SimSymbol extends string>(
   header.push("#");
   let first = true;
   for (const [st, sym, rule] of transitions) {
-    const stIdx = spec.allStates.indexOf(st);
+    const stIdx = mustStateIndex(spec.allStates, st);
+    const symIdx = mustSymbolIndex(spec.allSymbols, sym);
     if (!first) header.push(";");
     first = false;
     const [newSt, newSym, dir] = rule;
+    const newStIdx = mustStateIndex(spec.allStates, newSt);
+    const newSymIdx = mustSymbolIndex(spec.allSymbols, newSym);
     header.push(".");
     header.push(...toBinary(stIdx, sBits));
     header.push("|");
-    header.push(...toBinary(spec.allSymbols.indexOf(sym), symBits));
+    header.push(...toBinary(symIdx, symBits));
     header.push("|");
-    header.push(...toBinary(spec.allStates.indexOf(newSt), sBits));
+    header.push(...toBinary(newStIdx, sBits));
     header.push("|");
-    header.push(...toBinary(spec.allSymbols.indexOf(newSym), symBits));
+    header.push(...toBinary(newSymIdx, symBits));
     header.push("|");
     header.push(dir === "L" ? "l" : "d");
   }
@@ -152,7 +167,8 @@ function encodeToTape<SimState extends string, SimSymbol extends string>(
   const accStates = spec.allStates.filter((s) => spec.acceptingStates.has(s));
   for (let i = 0; i < accStates.length; i++) {
     if (i > 0) header.push(";");
-    header.push(...toBinary(spec.allStates.indexOf(accStates[i]), sBits));
+    const accStIdx = must(indexOf(spec.allStates, accStates[i])) as StateIdx;
+    header.push(...toBinary(accStIdx, sBits));
   }
 
   // STATE section
@@ -171,7 +187,7 @@ function encodeToTape<SimState extends string, SimSymbol extends string>(
   //   marker (^ if cellIdx === pos, else ,) followed by symBits binary digits.
   const tapeSecStart = header.length;
   const cellSize = 1 + symBits;
-  const writes = new Map<number, MyUtmSymbol>();
+  const writes = new Map<TapeIdx, MyUtmSymbol>();
 
   return makeEncodeTapeOverlay(
     header,
@@ -192,16 +208,16 @@ function encodeToTape<SimState extends string, SimSymbol extends string>(
  */
 function makeEncodeTapeOverlay<SimSymbol extends string>(
   header: MyUtmSymbol[],
-  writes: Map<number, MyUtmSymbol>,
-  tapeSecStart: number,
+  writes: Map<TapeIdx, MyUtmSymbol>,
+  tapeSecStart: TapeIdx,
   cellSize: number,
-  pos: number,
+  pos: TapeIdx,
   simTape: TapeOverlay<SimSymbol>,
   simSpec: { blank: SimSymbol; allSymbols: ReadonlyArray<SimSymbol> },
   symBits: number,
 ): TapeOverlay<MyUtmSymbol> {
   return {
-    get(idx: number): MyUtmSymbol | undefined {
+    get(idx: TapeIdx): MyUtmSymbol | undefined {
       if (writes.has(idx)) return writes.get(idx)!;
       if (idx < tapeSecStart) return header[idx];
       const offset = idx - tapeSecStart;
@@ -216,11 +232,11 @@ function makeEncodeTapeOverlay<SimSymbol extends string>(
         return cellIdx === pos ? "^" : ",";
       }
       const sym = simSym ?? simSpec.blank;
-      const symIdx = simSpec.allSymbols.indexOf(sym);
+      const symIdx = must(indexOf(simSpec.allSymbols, sym)) as SymbolIdx;
       const bits = toBinary(symIdx, symBits);
       return bits[within - 1];
     },
-    set(idx: number, sym: MyUtmSymbol): void {
+    set(idx: TapeIdx, sym: MyUtmSymbol): void {
       writes.set(idx, sym);
     },
     clone(): TapeOverlay<MyUtmSymbol> {
@@ -335,14 +351,14 @@ function decode<SimState extends string, SimSymbol extends string>(
 function makeDecodedTapeOverlay<SimSymbol extends string>(
   utmTape: TapeOverlay<MyUtmSymbol>,
   spec: { allSymbols: ReadonlyArray<SimSymbol>; blank: SimSymbol },
-  tapeSecStart: number,
+  tapeSecStart: TapeIdx,
   cellSize: number,
   symBits: number,
 ): TapeOverlay<SimSymbol> {
-  const writes = new Map<number, SimSymbol>();
+  const writes = new Map<TapeIdx, SimSymbol>();
 
   return {
-    get(cellIdx: number): SimSymbol | undefined {
+    get(cellIdx: TapeIdx): SimSymbol | undefined {
       if (writes.has(cellIdx)) return writes.get(cellIdx)!;
       const utmIdx = tapeSecStart + cellIdx * cellSize;
       const marker = utmTape.get(utmIdx);
@@ -352,7 +368,7 @@ function makeDecodedTapeOverlay<SimSymbol extends string>(
       if (symIdx >= spec.allSymbols.length) return undefined;
       return spec.allSymbols[symIdx];
     },
-    set(cellIdx: number, sym: SimSymbol): void {
+    set(cellIdx: TapeIdx, sym: SimSymbol): void {
       writes.set(cellIdx, sym);
     },
     clone(): TapeOverlay<SimSymbol> {
@@ -1661,7 +1677,7 @@ export class MyUtmSnapshot<
   SimState extends string,
   SimSymbol extends string,
 > implements UtmSnapshot<MyUtmState, MyUtmSymbol, SimState, SimSymbol> {
-  pos: number;
+  pos: TapeIdx;
   state: MyUtmState;
   tape: TapeOverlay<MyUtmSymbol>;
   simSpec: TuringMachineSpec<SimState, SimSymbol>;
@@ -1672,7 +1688,7 @@ export class MyUtmSnapshot<
     tape,
     simSpec,
   }: {
-    pos: number;
+    pos: TapeIdx;
     state: MyUtmState;
     tape: TapeOverlay<MyUtmSymbol>;
     simSpec: TuringMachineSpec<SimState, SimSymbol>;

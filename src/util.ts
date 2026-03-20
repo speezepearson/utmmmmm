@@ -1,6 +1,9 @@
 import {
   getStatus,
   step,
+  type StateIdx,
+  type SymbolIdx,
+  type TapeIdx,
   type TapeOverlay,
   type TuringMachineSnapshot,
   type UtmSnapshot,
@@ -9,7 +12,7 @@ import {
 export function tapesEqual<Tape extends readonly string[]>(
   a: Tape,
   b: Tape,
-  blank: Tape[number],
+  blank: Tape[TapeIdx],
 ): boolean {
   if (a.length > b.length) return tapesEqual(b, a, blank);
   if (a.length < b.length) {
@@ -32,9 +35,9 @@ export function must<T>(x: T | undefined): T {
 
 export function indexOf<Arr extends ReadonlyArray<unknown>>(
   array: Arr,
-  value: Arr[number],
-  start?: number,
-): number | undefined {
+  value: Arr[TapeIdx],
+  start?: TapeIdx,
+): TapeIdx | undefined {
   const index = array.indexOf(value, start);
   if (index === -1) {
     return undefined;
@@ -46,10 +49,10 @@ export function makeArrayTapeOverlay<Symbol extends string>(
   array: Symbol[],
 ): TapeOverlay<Symbol> {
   return {
-    get(i: number): Symbol | undefined {
+    get(i: TapeIdx): Symbol | undefined {
       return array[i];
     },
-    set(i: number, sym: Symbol): void {
+    set(i: TapeIdx, sym: Symbol): void {
       array[i] = sym;
     },
     clone(): TapeOverlay<Symbol> {
@@ -92,4 +95,18 @@ export function tapeIndexOf<Symbol extends string>(
     if (v === undefined) return undefined;
     if (v === value) return i;
   }
+}
+
+export function mustStateIndex<State extends string>(
+  states: readonly State[],
+  state: State,
+): StateIdx {
+  return must(indexOf(states, state)) as StateIdx;
+}
+
+export function mustSymbolIndex<Symbol extends string>(
+  symbols: readonly Symbol[],
+  symbol: Symbol,
+): SymbolIdx {
+  return must(indexOf(symbols, symbol)) as SymbolIdx;
 }
