@@ -18,17 +18,21 @@ fn build_spec(
     let n_states = state_names.len();
     let n_symbols = symbol_names.len();
 
-    let find_state = |name: &str| -> u8 {
-        state_names
-            .iter()
-            .position(|&n| n == name)
-            .unwrap_or_else(|| panic!("unknown state: {}", name)) as u8
+    let find_state = |name: &str| -> State {
+        State(
+            state_names
+                .iter()
+                .position(|&n| n == name)
+                .unwrap_or_else(|| panic!("unknown state: {}", name)) as u8,
+        )
     };
-    let find_sym = |name: &str| -> u8 {
-        symbol_names
-            .iter()
-            .position(|&n| n == name)
-            .unwrap_or_else(|| panic!("unknown symbol: {}", name)) as u8
+    let find_sym = |name: &str| -> Symbol {
+        Symbol(
+            symbol_names
+                .iter()
+                .position(|&n| n == name)
+                .unwrap_or_else(|| panic!("unknown symbol: {}", name)) as u8,
+        )
     };
 
     let initial_idx = find_state(initial);
@@ -36,42 +40,27 @@ fn build_spec(
 
     let mut acc = vec![false; n_states];
     for &a in accepting {
-        acc[find_state(a) as usize] = true;
+        acc[find_state(a).0 as usize] = true;
     }
 
     let mut trans = vec![None; 65536];
     let mut ordered = Vec::new();
 
-    // We need to preserve insertion order matching the TypeScript Map iteration order.
-    // Group transitions by state in the order states first appear in the transitions list.
-    let mut state_order: Vec<u8> = Vec::new();
-    let mut state_seen = vec![false; 256];
     for &(st, sy, ns, nsym, dir) in transitions {
         let st_idx = find_state(st);
         let sy_idx = find_sym(sy);
         let ns_idx = find_state(ns);
         let nsym_idx = find_sym(nsym);
 
-        if !state_seen[st_idx as usize] {
-            state_seen[st_idx as usize] = true;
-            state_order.push(st_idx);
-        }
-
-        let key = ((st_idx as usize) << 8) | (sy_idx as usize);
+        let key = ((st_idx.0 as usize) << 8) | (sy_idx.0 as usize);
         trans[key] = Some((ns_idx, nsym_idx, dir));
-    }
-
-    // Build ordered_rules following state_order and per-state insertion order
-    for &(st, sy, ns, nsym, dir) in transitions {
-        let st_idx = find_state(st);
-        let sy_idx = find_sym(sy);
-        let ns_idx = find_state(ns);
-        let nsym_idx = find_sym(nsym);
         ordered.push((st_idx, sy_idx, ns_idx, nsym_idx, dir));
     }
 
-    // Find accept state index for hot loop (first accepting state, or 255 if none)
-    let accept_idx = accepting.first().map(|&a| find_state(a)).unwrap_or(255);
+    let accept_idx = accepting
+        .first()
+        .map(|&a| find_state(a))
+        .unwrap_or(State(255));
 
     TuringMachineSpec {
         n_states,
@@ -102,25 +91,11 @@ pub fn write1s_forever_spec() -> TuringMachineSpec {
 }
 
 pub fn accept_immediately_spec() -> TuringMachineSpec {
-    build_spec(
-        &["init"],
-        &["_"],
-        "init",
-        "_",
-        &["init"],
-        &[],
-    )
+    build_spec(&["init"], &["_"], "init", "_", &["init"], &[])
 }
 
 pub fn reject_immediately_spec() -> TuringMachineSpec {
-    build_spec(
-        &["init"],
-        &["_"],
-        "init",
-        "_",
-        &[],
-        &[],
-    )
+    build_spec(&["init"], &["_"], "init", "_", &[], &[])
 }
 
 pub fn flip_bits_spec() -> TuringMachineSpec {
@@ -228,7 +203,9 @@ pub fn check_palindrome_spec() -> TuringMachineSpec {
 
 pub fn double_x_spec() -> TuringMachineSpec {
     build_spec(
-        &["start", "findX", "goRight", "goBack", "cleanL", "cleanR", "done"],
+        &[
+            "start", "findX", "goRight", "goBack", "cleanL", "cleanR", "done",
+        ],
         &["_", "$", "X", "Y", "Z"],
         "start",
         "_",
