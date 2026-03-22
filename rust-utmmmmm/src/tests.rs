@@ -497,3 +497,98 @@ fn test_faithful_utm_running_accept_immediately() {
     // Two levels of UTM overhead requires a very large step limit.
     assert_faithful(utm_tm, 10_000, 10_000_000_000);
 }
+
+// ════════════════════════════════════════════════════════════════════
+// Benchmark: compiled vs interpreted UTM(UTM(accept_immediately))
+// ════════════════════════════════════════════════════════════════════
+
+#[test]
+#[ignore] // Run with: cargo test --release -- --ignored bench_compiled_vs_interpreted --nocapture
+fn bench_compiled_vs_interpreted() {
+    use crate::compiled::{CSymbol, CompiledTuringMachineSpec};
+    use crate::tm::step;
+    use std::time::Instant;
+
+    const STEPS: usize = 100_000;
+    // Pre-extend tape to this size so no allocation happens during timing.
+    const TAPE_PAD: usize = 10_000;
+
+    let utm = &*UTM_SPEC;
+
+    // Build utm(encode(utm(encode(accept_immediately))))
+    let acc_spec = &*ACCEPT_IMMEDIATELY_SPEC;
+    let mut inner_tm = RunningTuringMachine::new(acc_spec);
+    inner_tm.tape = vec![AccImmSymbol::One];
+    let inner_encoded = MyUtmEncodingScheme::encode(&inner_tm);
+
+    let mut mid_tm = RunningTuringMachine::new(utm);
+    mid_tm.tape = inner_encoded;
+    let outer_encoded = MyUtmEncodingScheme::encode(&mid_tm);
+
+    // Helper: convert Symbol tape to CSymbol tape
+    let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
+    let sym_to_csym: std::collections::HashMap<Symbol, CSymbol> = compiled
+        .original_symbols
+        .iter()
+        .enumerate()
+        .map(|(i, &s)| (s, CSymbol(i as u8)))
+        .collect();
+
+    // ── Interpreted: set up and pre-extend tape ──
+    let mut interp_tm = RunningTuringMachine::new(utm);
+    interp_tm.tape = outer_encoded.clone();
+    interp_tm
+        .tape
+        .resize(outer_encoded.len() + TAPE_PAD, utm.blank());
+
+    // ── Compiled: set up and pre-extend tape ──
+    let mut compiled_tm = RunningTuringMachine::new(&compiled);
+    compiled_tm.tape = outer_encoded
+        .iter()
+        .map(|s| sym_to_csym[s])
+        .collect::<Vec<_>>();
+    compiled_tm
+        .tape
+        .resize(outer_encoded.len() + TAPE_PAD, compiled.blank);
+
+    // ── Timed: interpreted step loop ──
+    let t0 = Instant::now();
+    for _ in 0..STEPS {
+        step(&mut interp_tm);
+    }
+    let interp_elapsed = t0.elapsed();
+
+    // ── Timed: compiled step loop ──
+    let t0 = Instant::now();
+    for _ in 0..STEPS {
+        step(&mut compiled_tm);
+    }
+    let compiled_elapsed = t0.elapsed();
+
+    // ── Verify faithfulness ──
+    let decompiled = compiled.decompile(&compiled_tm);
+    assert_eq!(
+        interp_tm.state, decompiled.state,
+        "state mismatch after {} steps",
+        STEPS
+    );
+    assert_eq!(
+        interp_tm.pos, decompiled.pos,
+        "pos mismatch after {} steps",
+        STEPS
+    );
+    assert_eq!(
+        interp_tm.tape, decompiled.tape,
+        "tape mismatch after {} steps",
+        STEPS
+    );
+
+    let speedup = interp_elapsed.as_secs_f64() / compiled_elapsed.as_secs_f64();
+    eprintln!(
+        "═══ Benchmark: UTM(UTM(accept_immediately)), {} steps ═══",
+        STEPS
+    );
+    eprintln!("  Interpreted (HashMap): {:?}", interp_elapsed);
+    eprintln!("  Compiled (array):      {:?}", compiled_elapsed);
+    eprintln!("  Speedup:               {:.2}x", speedup);
+}
