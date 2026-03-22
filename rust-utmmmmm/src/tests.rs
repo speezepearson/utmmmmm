@@ -326,6 +326,7 @@ fn test_infinite_tape_initial() {
 #[test]
 fn test_infinite_tape_self_similar() {
     use crate::infinity::InfiniteTapeExtender;
+    use crate::optimization_hints::OPTIMIZATION_HINTS;
     use crate::tm::TapeExtender;
 
     let mut outer_tape: Vec<Symbol> = Vec::new();
@@ -338,8 +339,9 @@ fn test_infinite_tape_self_similar() {
         MyUtmEncodingScheme::decode(utm, &outer_tape).expect("should decode the infinite UTM tape");
 
     // Re-encode the decoded guest TM back into a UTM tape.
-    // This should reproduce the outer tape (since UTM simulates itself).
-    let mut re_encoded = MyUtmEncodingScheme::encode(&decoded);
+    // Must use the same rule order as the infinite extender (which uses OPTIMIZATION_HINTS).
+    let mut re_encoded =
+        MyUtmEncodingScheme::encode_with_rule_order(&decoded, Some(OPTIMIZATION_HINTS));
     InfiniteTapeExtender.extend(&mut re_encoded, 100_000);
 
     assert_eq!(
@@ -499,6 +501,101 @@ fn test_faithful_utm_running_accept_immediately() {
 }
 
 // ════════════════════════════════════════════════════════════════════
+// Tests: encode_with_rule_order
+// ════════════════════════════════════════════════════════════════════
+
+#[test]
+fn test_encode_with_last_rules_faithful_flip_bits() {
+    use FlipBitsSymbol::*;
+    let spec = &*FLIP_BITS_SPEC;
+    let mut tm = RunningTuringMachine::new(spec);
+    tm.tape = vec![Zero, One, Zero];
+
+    // Put one specific rule last
+    let last_rules = vec![(FlipBitsState::Flip, Zero)];
+    let encoded = MyUtmEncodingScheme::encode_with_rule_order(&tm, Some(&last_rules));
+
+    // Run directly
+    let mut direct_tm = RunningTuringMachine {
+        spec: tm.spec,
+        state: tm.state,
+        pos: tm.pos,
+        tape: tm.tape.clone(),
+    };
+    let direct_result = run_tm(&mut direct_tm, 100, None).unwrap();
+
+    // Run via UTM with reordered encoding
+    let utm = &*UTM_SPEC;
+    let mut utm_tm = RunningTuringMachine::new(utm);
+    utm_tm.tape = encoded;
+    let utm_result = run_tm(&mut utm_tm, 10_000_000, None).unwrap();
+
+    // Compare accept/reject status (not step counts, which differ)
+    assert_eq!(
+        matches!(direct_result, HaltReason::Accepted { .. }),
+        matches!(utm_result, HaltReason::Accepted { .. }),
+        "halt status should match"
+    );
+
+    let decoded = MyUtmEncodingScheme::decode(spec, &utm_tm.tape).expect("should decode UTM tape");
+    strip_trailing_blanks(&mut direct_tm);
+    let mut decoded_stripped = decoded;
+    strip_trailing_blanks(&mut decoded_stripped);
+    assert_eq!(direct_tm.tape, decoded_stripped.tape);
+}
+
+#[test]
+fn test_encode_with_last_rules_faithful_palindrome() {
+    use CheckPalindromeSymbol::*;
+    let spec = &*CHECK_PALINDROME_SPEC;
+    let mut tm = RunningTuringMachine::new(spec);
+    tm.tape = vec![A, B, A];
+
+    // Put some rules last
+    let last_rules = vec![
+        (CheckPalindromeState::SeekRA, A),
+        (CheckPalindromeState::SeekRA, B),
+    ];
+    let encoded = MyUtmEncodingScheme::encode_with_rule_order(&tm, Some(&last_rules));
+
+    let mut direct_tm = RunningTuringMachine {
+        spec: tm.spec,
+        state: tm.state,
+        pos: tm.pos,
+        tape: tm.tape.clone(),
+    };
+    let direct_result = run_tm(&mut direct_tm, 1_000, None).unwrap();
+
+    let utm = &*UTM_SPEC;
+    let mut utm_tm = RunningTuringMachine::new(utm);
+    utm_tm.tape = encoded;
+    let utm_result = run_tm(&mut utm_tm, 10_000_000, None).unwrap();
+
+    assert_eq!(
+        matches!(direct_result, HaltReason::Accepted { .. }),
+        matches!(utm_result, HaltReason::Accepted { .. }),
+    );
+
+    let decoded = MyUtmEncodingScheme::decode(spec, &utm_tm.tape).expect("should decode UTM tape");
+    strip_trailing_blanks(&mut direct_tm);
+    let mut decoded_stripped = decoded;
+    strip_trailing_blanks(&mut decoded_stripped);
+    assert_eq!(direct_tm.tape, decoded_stripped.tape);
+}
+
+#[test]
+fn test_encode_with_none_same_as_encode() {
+    use FlipBitsSymbol::*;
+    let spec = &*FLIP_BITS_SPEC;
+    let mut tm = RunningTuringMachine::new(spec);
+    tm.tape = vec![Zero, One];
+
+    let plain = MyUtmEncodingScheme::encode(&tm);
+    let with_none = MyUtmEncodingScheme::encode_with_rule_order(&tm, None);
+    assert_eq!(plain, with_none);
+}
+
+// ════════════════════════════════════════════════════════════════════
 // Benchmark: compiled vs interpreted UTM(UTM(accept_immediately))
 // ════════════════════════════════════════════════════════════════════
 
@@ -591,4 +688,111 @@ fn bench_compiled_vs_interpreted() {
     eprintln!("  Interpreted (HashMap): {:?}", interp_elapsed);
     eprintln!("  Compiled (array):      {:?}", compiled_elapsed);
     eprintln!("  Speedup:               {:.2}x", speedup);
+}
+
+#[test]
+#[ignore] // Run with: cargo test --release -- --ignored bench_rule_order --nocapture
+fn bench_rule_order_optimization() {
+    use crate::compiled::CompiledTuringMachineSpec;
+    use crate::optimization_hints::OPTIMIZATION_HINTS;
+    use crate::tm::step;
+    use std::time::Instant;
+
+    const STEPS: usize = 10_000_000;
+
+    let utm = &*UTM_SPEC;
+    let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
+
+    // Helper: build a compiled TM running the infinite UTM tape with given rule order
+    let build_tm = |last_rules: Option<&[(State, Symbol)]>| {
+        // Compute the header with the given rule order
+        let header_tape = MyUtmEncodingScheme::encode_with_rule_order(
+            &RunningTuringMachine::new(utm),
+            last_rules,
+        );
+        let caret_pos = header_tape
+            .iter()
+            .position(|&s| s == Symbol::Caret)
+            .unwrap();
+        let header: Vec<Symbol> = header_tape[..caret_pos].to_vec();
+
+        // Build a custom extender using this header
+        // We can't reuse InfiniteTapeExtender directly since it uses OPTIMIZATION_HINTS,
+        // so for the unoptimized case we need to build the tape from the unoptimized header.
+        // For simplicity, pre-extend a large tape and run from that.
+        let sym_to_idx: std::collections::HashMap<Symbol, usize> = utm
+            .iter_symbols()
+            .enumerate()
+            .map(|(i, s)| (s, i))
+            .collect();
+        let n_sym_bits = crate::utm::num_bits(utm.iter_symbols().count());
+        let cell_width = 1 + n_sym_bits;
+        let tape_len = header.len() + STEPS + 10_000;
+        let mut tape: Vec<Symbol> = Vec::with_capacity(tape_len);
+        // Fill header
+        tape.extend_from_slice(&header);
+        // Fill tape section
+        for i in 0..(tape_len - header.len()) {
+            if i % cell_width == 0 {
+                tape.push(if i == 0 { Symbol::Caret } else { Symbol::Comma });
+            } else {
+                let cell_index = i / cell_width;
+                let bit_offset = i % cell_width - 1;
+                let sym = tape[cell_index];
+                let sym_idx = sym_to_idx[&sym];
+                let bit = (sym_idx >> (n_sym_bits - 1 - bit_offset)) & 1;
+                tape.push(if bit == 1 { Symbol::One } else { Symbol::Zero });
+            }
+        }
+
+        // Convert to compiled symbols
+        let sym_to_csym: std::collections::HashMap<Symbol, crate::compiled::CSymbol> = compiled
+            .original_symbols
+            .iter()
+            .enumerate()
+            .map(|(i, &s)| (s, crate::compiled::CSymbol(i as u8)))
+            .collect();
+        let mut compiled_tm = RunningTuringMachine::new(&compiled);
+        compiled_tm.tape = tape.iter().map(|s| sym_to_csym[s]).collect();
+        compiled_tm
+    };
+
+    // ── Unoptimized (default rule order) ──
+    let mut unopt_tm = build_tm(None);
+    let t0 = Instant::now();
+    for _ in 0..STEPS {
+        step(&mut unopt_tm);
+    }
+    let unopt_elapsed = t0.elapsed();
+
+    // ── Optimized (hints rule order) ──
+    let mut opt_tm = build_tm(Some(OPTIMIZATION_HINTS));
+    let t0 = Instant::now();
+    for _ in 0..STEPS {
+        step(&mut opt_tm);
+    }
+    let opt_elapsed = t0.elapsed();
+
+    eprintln!(
+        "═══ Benchmark: rule order optimization, {} steps ═══",
+        STEPS
+    );
+    eprintln!(
+        "  Unoptimized: {:?} (pos={}, tape={})",
+        unopt_elapsed,
+        unopt_tm.pos,
+        unopt_tm.tape.len()
+    );
+    eprintln!(
+        "  Optimized:   {:?} (pos={}, tape={})",
+        opt_elapsed,
+        opt_tm.pos,
+        opt_tm.tape.len()
+    );
+    // With optimized rule order, the UTM finds matching rules faster,
+    // so the head should have progressed further in the same number of steps.
+    eprintln!(
+        "  Head position ratio (opt/unopt): {:.2}x",
+        opt_tm.pos as f64 / unopt_tm.pos as f64
+    );
 }

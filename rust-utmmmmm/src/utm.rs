@@ -441,86 +441,7 @@ impl UtmEncodingScheme for MyUtmEncodingScheme {
     /// BLANK: blank symbol bits
     /// TAPE: comma-separated cells, head cell prefixed with ^
     fn encode<Guest: TuringMachineSpec>(guest: &RunningTuringMachine<Guest>) -> Vec<Self::Symbol> {
-        let guest_states: Vec<Guest::State> = guest.spec.iter_states().collect();
-        let guest_symbols: Vec<Guest::Symbol> = guest.spec.iter_symbols().collect();
-
-        let guest_st_to_idx = guest_states
-            .iter()
-            .enumerate()
-            .map(|(i, s)| (*s, i))
-            .collect::<HashMap<Guest::State, usize>>();
-        let guest_sym_to_idx = guest_symbols
-            .iter()
-            .enumerate()
-            .map(|(i, s)| (*s, i))
-            .collect::<HashMap<Guest::Symbol, usize>>();
-
-        let n_state_bits = num_bits(guest_states.len());
-        let n_sym_bits = num_bits(guest_symbols.len());
-
-        let mut tape: Vec<Symbol> = Vec::new();
-        tape.push(Symbol::Dollar);
-
-        // RULES section: # .rule1 ; .rule2 ; .rule3 ... #
-        tape.push(Symbol::Hash);
-        let mut first_rule = true;
-        for (st, sym, nst, nsym, dir) in guest.spec.iter_rules() {
-            if !first_rule {
-                tape.push(Symbol::Semi);
-            }
-            first_rule = false;
-            tape.push(Symbol::Dot);
-            tape.extend_from_slice(&to_binary(guest_st_to_idx[&st], n_state_bits));
-            tape.push(Symbol::Pipe);
-            tape.extend_from_slice(&to_binary(guest_sym_to_idx[&sym], n_sym_bits));
-            tape.push(Symbol::Pipe);
-            tape.extend_from_slice(&to_binary(guest_st_to_idx[&nst], n_state_bits));
-            tape.push(Symbol::Pipe);
-            tape.extend_from_slice(&to_binary(guest_sym_to_idx[&nsym], n_sym_bits));
-            tape.push(Symbol::Pipe);
-            tape.push(match dir {
-                Dir::Left => Symbol::L,
-                Dir::Right => Symbol::D,
-            });
-        }
-
-        tape.push(Symbol::Hash);
-        for (i, state) in guest
-            .spec
-            .iter_states()
-            .filter(|s| guest.spec.is_accepting(*s))
-            .enumerate()
-        {
-            if i > 0 {
-                tape.push(Symbol::Semi);
-            }
-            tape.extend_from_slice(&to_binary(guest_st_to_idx[&state], n_state_bits));
-        }
-
-        tape.push(Symbol::Hash);
-        tape.extend_from_slice(&to_binary(guest_st_to_idx[&guest.state], n_state_bits));
-
-        tape.push(Symbol::Hash);
-        tape.extend_from_slice(&to_binary(
-            guest_sym_to_idx[&guest.spec.blank()],
-            n_sym_bits,
-        ));
-
-        tape.push(Symbol::Hash);
-
-        let caret_pos = tape.len();
-        let default_tape = [guest.spec.blank()];
-        tape.extend_from_slice(&encode_tape(
-            &guest_sym_to_idx,
-            if guest.tape.is_empty() {
-                &default_tape
-            } else {
-                guest.tape.as_slice()
-            },
-        ));
-        tape[caret_pos] = Symbol::Caret;
-
-        tape
+        Self::encode_with_rule_order(guest, None)
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -596,6 +517,127 @@ impl UtmEncodingScheme for MyUtmEncodingScheme {
             pos: head_pos,
             tape: cells.iter().map(|&i| guest_symbols[i]).collect(),
         })
+    }
+}
+
+impl MyUtmEncodingScheme {
+    /// Encode a guest TM, optionally reordering rules so that `last_rules`
+    /// appear at the end of the rules section (in the given order).
+    /// Rules not in `last_rules` appear first (in `iter_rules` order).
+    ///
+    /// The UTM scans rules right-to-left, so placing frequently-used rules
+    /// last reduces search time.
+    pub fn encode_with_rule_order<Guest: TuringMachineSpec>(
+        guest: &RunningTuringMachine<Guest>,
+        last_rules: Option<&[(Guest::State, Guest::Symbol)]>,
+    ) -> Vec<Symbol> {
+        let guest_states: Vec<Guest::State> = guest.spec.iter_states().collect();
+        let guest_symbols: Vec<Guest::Symbol> = guest.spec.iter_symbols().collect();
+
+        let guest_st_to_idx = guest_states
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (*s, i))
+            .collect::<HashMap<Guest::State, usize>>();
+        let guest_sym_to_idx = guest_symbols
+            .iter()
+            .enumerate()
+            .map(|(i, s)| (*s, i))
+            .collect::<HashMap<Guest::Symbol, usize>>();
+
+        let n_state_bits = num_bits(guest_states.len());
+        let n_sym_bits = num_bits(guest_symbols.len());
+
+        // Collect all rules
+        type Rule<S, Y> = (S, Y, S, Y, Dir);
+        let all_rules: Vec<Rule<Guest::State, Guest::Symbol>> = guest.spec.iter_rules().collect();
+
+        // Reorder rules if last_rules is provided
+        let ordered_rules: Vec<&Rule<Guest::State, Guest::Symbol>> = match last_rules {
+            None => all_rules.iter().collect(),
+            Some(last) => {
+                let last_set: std::collections::HashSet<(Guest::State, Guest::Symbol)> =
+                    last.iter().copied().collect();
+                let mut front: Vec<&Rule<Guest::State, Guest::Symbol>> = all_rules
+                    .iter()
+                    .filter(|(st, sym, _, _, _)| !last_set.contains(&(*st, *sym)))
+                    .collect();
+                // Append last_rules in the specified order
+                for &(lst, lsym) in last {
+                    if let Some(rule) = all_rules
+                        .iter()
+                        .find(|(st, sym, _, _, _)| *st == lst && *sym == lsym)
+                    {
+                        front.push(rule);
+                    }
+                }
+                front
+            }
+        };
+
+        let mut tape: Vec<Symbol> = Vec::new();
+        tape.push(Symbol::Dollar);
+
+        // RULES section: # .rule1 ; .rule2 ; .rule3 ... #
+        tape.push(Symbol::Hash);
+        let mut first_rule = true;
+        for &(st, sym, nst, nsym, dir) in &ordered_rules {
+            if !first_rule {
+                tape.push(Symbol::Semi);
+            }
+            first_rule = false;
+            tape.push(Symbol::Dot);
+            tape.extend_from_slice(&to_binary(guest_st_to_idx[&st], n_state_bits));
+            tape.push(Symbol::Pipe);
+            tape.extend_from_slice(&to_binary(guest_sym_to_idx[&sym], n_sym_bits));
+            tape.push(Symbol::Pipe);
+            tape.extend_from_slice(&to_binary(guest_st_to_idx[&nst], n_state_bits));
+            tape.push(Symbol::Pipe);
+            tape.extend_from_slice(&to_binary(guest_sym_to_idx[&nsym], n_sym_bits));
+            tape.push(Symbol::Pipe);
+            tape.push(match dir {
+                Dir::Left => Symbol::L,
+                Dir::Right => Symbol::D,
+            });
+        }
+
+        tape.push(Symbol::Hash);
+        for (i, state) in guest
+            .spec
+            .iter_states()
+            .filter(|s| guest.spec.is_accepting(*s))
+            .enumerate()
+        {
+            if i > 0 {
+                tape.push(Symbol::Semi);
+            }
+            tape.extend_from_slice(&to_binary(guest_st_to_idx[&state], n_state_bits));
+        }
+
+        tape.push(Symbol::Hash);
+        tape.extend_from_slice(&to_binary(guest_st_to_idx[&guest.state], n_state_bits));
+
+        tape.push(Symbol::Hash);
+        tape.extend_from_slice(&to_binary(
+            guest_sym_to_idx[&guest.spec.blank()],
+            n_sym_bits,
+        ));
+
+        tape.push(Symbol::Hash);
+
+        let caret_pos = tape.len();
+        let default_tape = [guest.spec.blank()];
+        tape.extend_from_slice(&encode_tape(
+            &guest_sym_to_idx,
+            if guest.tape.is_empty() {
+                &default_tape
+            } else {
+                guest.tape.as_slice()
+            },
+        ));
+        tape[caret_pos] = Symbol::Caret;
+
+        tape
     }
 }
 

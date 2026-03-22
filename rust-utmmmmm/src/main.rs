@@ -1,5 +1,6 @@
 mod compiled;
 mod infinity;
+mod optimization_hints;
 mod tm;
 #[allow(dead_code)]
 mod toy_machines;

@@ -13,13 +13,17 @@
 use std::{collections::HashMap, sync::LazyLock};
 
 use crate::{
+    optimization_hints::OPTIMIZATION_HINTS,
     tm::{RunningTuringMachine, TapeExtender, TuringMachineSpec},
-    utm::{num_bits, MyUtmEncodingScheme, Symbol, UtmEncodingScheme as _, UTM_SPEC},
+    utm::{num_bits, MyUtmEncodingScheme, Symbol, UTM_SPEC},
 };
 
 /// The header: everything before the tape section ($ # rules # acc # state # blank #).
 static HEADER: LazyLock<Vec<Symbol>> = LazyLock::new(|| {
-    let dummy = MyUtmEncodingScheme::encode(&RunningTuringMachine::new(&*UTM_SPEC));
+    let dummy = MyUtmEncodingScheme::encode_with_rule_order(
+        &RunningTuringMachine::new(&*UTM_SPEC),
+        Some(OPTIMIZATION_HINTS),
+    );
     let caret_pos = dummy
         .iter()
         .position(|&s| s == Symbol::Caret)
