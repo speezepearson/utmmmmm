@@ -181,33 +181,46 @@ fn load_savepoint(path: &str) -> Option<(u64, u64, CState, usize, Vec<CSymbol>)>
 }
 
 // ════════════════════════════════════════════════════════════════════
-// State log: binary format for state transitions
+// State log: head position ranges sampled every 100K steps
 // ════════════════════════════════════════════════════════════════════
-// Header: "SLOG" | u16 num_states | for each: u16 name_len, name bytes
-// Records: u64 total_steps | u8 state_idx | u64 pos
+// Header: "HLOG"
+// Records: u64 step | u64 min_pos | u64 max_pos  (24 bytes each)
 
 struct StateLog {
     writer: std::io::BufWriter<std::fs::File>,
+    interval_min_pos: u64,
+    interval_max_pos: u64,
 }
 
 impl StateLog {
-    fn new(path: &str, original_states: &[State]) -> Self {
+    fn new(path: &str) -> Self {
         let mut w = std::io::BufWriter::new(std::fs::File::create(path).expect("create state-log"));
-        w.write_all(b"SLOG").unwrap();
-        w.write_all(&(original_states.len() as u16).to_le_bytes())
-            .unwrap();
-        for state in original_states {
-            let name = format!("{:?}", state);
-            w.write_all(&(name.len() as u16).to_le_bytes()).unwrap();
-            w.write_all(name.as_bytes()).unwrap();
+        w.write_all(b"HLOG").unwrap();
+        StateLog {
+            writer: w,
+            interval_min_pos: u64::MAX,
+            interval_max_pos: 0,
         }
-        StateLog { writer: w }
     }
 
-    fn log(&mut self, steps: u64, state: u8, pos: u64) {
-        self.writer.write_all(&steps.to_le_bytes()).unwrap();
-        self.writer.write_all(&[state]).unwrap();
-        self.writer.write_all(&pos.to_le_bytes()).unwrap();
+    fn observe(&mut self, pos: usize) {
+        let pos = pos as u64;
+        self.interval_min_pos = self.interval_min_pos.min(pos);
+        self.interval_max_pos = self.interval_max_pos.max(pos);
+    }
+
+    fn flush_interval(&mut self, step: u64) {
+        if self.interval_min_pos <= self.interval_max_pos {
+            self.writer.write_all(&step.to_le_bytes()).unwrap();
+            self.writer
+                .write_all(&self.interval_min_pos.to_le_bytes())
+                .unwrap();
+            self.writer
+                .write_all(&self.interval_max_pos.to_le_bytes())
+                .unwrap();
+        }
+        self.interval_min_pos = u64::MAX;
+        self.interval_max_pos = 0;
     }
 }
 
@@ -274,13 +287,7 @@ fn main() {
     eprint!("{}", format_tower(&tower, total_steps));
 
     // State log
-    let mut state_log = state_log_path
-        .as_deref()
-        .map(|p| StateLog::new(p, &compiled.original_states));
-    if let Some(ref mut log) = state_log {
-        // Log initial state
-        log.log(total_steps, tm.state.0, tm.pos as u64);
-    }
+    let mut state_log = state_log_path.as_deref().map(StateLog::new);
 
     let print_interval = std::time::Duration::from_millis(100);
     let mut last_print = std::time::Instant::now();
@@ -324,12 +331,13 @@ fn main() {
             return;
         }
 
-        // Log state change
+        // Track head position for state log
+        if let Some(ref mut log) = state_log {
+            log.observe(tm.pos);
+        }
+
+        // Detect Init entry
         if tm.state != prev_cstate {
-            if let Some(ref mut log) = state_log {
-                log.log(total_steps, tm.state.0, tm.pos as u64);
-            }
-            // Detect Init entry
             if tm.state == init_cstate {
                 guest_steps += 1;
                 tower[0] = compiled.decompile(&tm);
@@ -340,6 +348,11 @@ fn main() {
 
         // Periodic checks (every 100K steps to avoid syscall overhead)
         if total_steps % 100_000 == 0 {
+            // Flush state log interval
+            if let Some(ref mut log) = state_log {
+                log.flush_interval(total_steps);
+            }
+
             // Savepoint every 1B steps
             if let Some(ref sp_path) = savepoint_path {
                 if total_steps - last_savepoint_step >= 1_000_000_000 {
