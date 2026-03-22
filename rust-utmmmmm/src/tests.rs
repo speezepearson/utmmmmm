@@ -696,9 +696,8 @@ fn bench_rule_order_optimization() {
     use crate::compiled::CompiledTuringMachineSpec;
     use crate::optimization_hints::OPTIMIZATION_HINTS;
     use crate::tm::step;
-    use std::time::Instant;
 
-    const STEPS: usize = 10_000_000;
+    const STEPS: usize = 100_000_000;
 
     let utm = &*UTM_SPEC;
     let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
@@ -757,42 +756,56 @@ fn bench_rule_order_optimization() {
         compiled_tm
     };
 
+    // Find the CState index corresponding to State::Init
+    let init_cstate = compiled
+        .original_states
+        .iter()
+        .position(|&s| s == State::Init)
+        .map(|i| crate::compiled::CState(i as u8))
+        .expect("Init state should exist");
+
+    // Helper: run STEPS and count transitions from non-Init to Init
+    let count_init_transitions = |tm: &mut RunningTuringMachine<
+        CompiledTuringMachineSpec<crate::tm::SimpleTuringMachineSpec<State, Symbol>>,
+    >|
+     -> u64 {
+        let mut init_transitions = 0u64;
+        for _ in 0..STEPS {
+            let prev_state = tm.state;
+            step(tm);
+            if tm.state == init_cstate && prev_state != init_cstate {
+                init_transitions += 1;
+            }
+        }
+        init_transitions
+    };
+
     // ── Unoptimized (default rule order) ──
     let mut unopt_tm = build_tm(None);
-    let t0 = Instant::now();
-    for _ in 0..STEPS {
-        step(&mut unopt_tm);
-    }
-    let unopt_elapsed = t0.elapsed();
+    let unopt_init_transitions = count_init_transitions(&mut unopt_tm);
 
     // ── Optimized (hints rule order) ──
     let mut opt_tm = build_tm(Some(OPTIMIZATION_HINTS));
-    let t0 = Instant::now();
-    for _ in 0..STEPS {
-        step(&mut opt_tm);
-    }
-    let opt_elapsed = t0.elapsed();
+    let opt_init_transitions = count_init_transitions(&mut opt_tm);
 
     eprintln!(
         "═══ Benchmark: rule order optimization, {} steps ═══",
         STEPS
     );
     eprintln!(
-        "  Unoptimized: {:?} (pos={}, tape={})",
-        unopt_elapsed,
-        unopt_tm.pos,
-        unopt_tm.tape.len()
+        "  Unoptimized: {} Init transitions (= simulated guest steps)",
+        unopt_init_transitions
     );
     eprintln!(
-        "  Optimized:   {:?} (pos={}, tape={})",
-        opt_elapsed,
-        opt_tm.pos,
-        opt_tm.tape.len()
+        "  Optimized:   {} Init transitions (= simulated guest steps)",
+        opt_init_transitions
     );
     // With optimized rule order, the UTM finds matching rules faster,
-    // so the head should have progressed further in the same number of steps.
-    eprintln!(
-        "  Head position ratio (opt/unopt): {:.2}x",
-        opt_tm.pos as f64 / unopt_tm.pos as f64
-    );
+    // so it should complete more guest-level steps in the same number of UTM steps.
+    if unopt_init_transitions > 0 {
+        eprintln!(
+            "  Ratio (opt/unopt): {:.2}x",
+            opt_init_transitions as f64 / unopt_init_transitions as f64
+        );
+    }
 }
