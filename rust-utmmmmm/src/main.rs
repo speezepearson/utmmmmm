@@ -1,4 +1,3 @@
-#[allow(dead_code)]
 mod compiled;
 mod infinity;
 mod tm;
@@ -10,6 +9,7 @@ use std::fmt::Debug;
 use tm::{RunningTuringMachine, TapeExtender, TuringMachineSpec};
 use utm::*;
 
+use crate::compiled::{CompiledTapeExtender, CompiledTuringMachineSpec};
 use crate::infinity::{header_len, InfiniteTapeExtender};
 
 const RADIUS: usize = 30;
@@ -121,21 +121,23 @@ fn print_tower<Spec: TuringMachineSpec<Symbol = Symbol>>(
 
 fn main() {
     let utm = &*UTM_SPEC;
+    let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
 
-    let mut tm = RunningTuringMachine::new(utm);
-    let extender = InfiniteTapeExtender;
+    let mut tm = RunningTuringMachine::new(&compiled);
+    let mut extender = CompiledTapeExtender::new(&compiled, Box::new(InfiniteTapeExtender));
     // Initialize tape with at least one cell
     extender.extend(&mut tm.tape, 1);
 
     let mut steps: u64 = 0;
-    print_tower(&tm, steps);
+    let decompiled = compiled.decompile(&tm);
+    print_tower(&decompiled, steps);
 
     loop {
         if tm.pos >= tm.tape.len() {
             extender.extend(&mut tm.tape, tm.pos + 1);
         }
         let sym = tm.tape[tm.pos];
-        if let Some((ns, nsym, dir)) = utm.get_transition(tm.state, sym) {
+        if let Some((ns, nsym, dir)) = compiled.get_transition(tm.state, sym) {
             tm.state = ns;
             tm.tape[tm.pos] = nsym;
             tm.pos = match dir {
@@ -144,22 +146,24 @@ fn main() {
             };
             steps += 1;
             if steps % 1_000_000 == 0 {
-                print_tower(&tm, steps);
+                let decompiled = compiled.decompile(&tm);
+                print_tower(&decompiled, steps);
             }
         } else {
             break;
         }
     }
 
-    print_tower(&tm, steps);
-    let status = if utm.is_accepting(tm.state) {
+    let decompiled = compiled.decompile(&tm);
+    print_tower(&decompiled, steps);
+    let status = if compiled.is_accepting(tm.state) {
         "accept"
     } else {
         "reject"
     };
     println!(
         "halted in state {:?} ({}) after {} steps",
-        tm.state, status, steps
+        decompiled.state, status, steps
     );
 }
 
