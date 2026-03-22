@@ -7,7 +7,7 @@ use std::{
     sync::LazyLock,
 };
 
-use crate::tm::{Dir, SimpleTuringMachineSpec, TuringMachineSpec};
+use crate::tm::{Dir, SimpleTuringMachineSpec};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum W1State {
@@ -119,7 +119,7 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
     transitions.insert((Start, B), (SeekRB, Blank, Dir::Right));
     transitions.insert((Start, C), (SeekRC, Blank, Dir::Right));
 
-    for (letter, check, seek) in letter_triplets {
+    for (_letter, check, seek) in letter_triplets {
         transitions.insert((seek, Blank), (check, Blank, Dir::Left));
         for (l2, _, _) in letter_triplets {
             transitions.insert((seek, l2), (seek, l2, Dir::Right));
@@ -127,7 +127,7 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
     }
 
     // check_x rules
-    for (letter, check, seek) in letter_triplets {
+    for (letter, check, _seek) in letter_triplets {
         transitions.insert((check, Blank), (Accept, Blank, Dir::Right));
         transitions.insert((check, letter), (SeekL, Blank, Dir::Left));
     }

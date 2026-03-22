@@ -4,7 +4,6 @@
 
 use std::{
     collections::{HashMap, HashSet},
-    fmt::Formatter,
     hash::Hash,
     sync::LazyLock,
 };
@@ -554,6 +553,13 @@ impl UtmEncodingScheme for MyUtmEncodingScheme {
             if s == Symbol::Hash {
                 hashes.push(i);
             }
+        }
+
+        if hashes.len() < 5 {
+            return Err(format!(
+                "expected at least 5 # delimiters, found {}",
+                hashes.len()
+            ));
         }
 
         let state_start = hashes[2] + 1;

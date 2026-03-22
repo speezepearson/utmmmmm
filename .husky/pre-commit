@@ -1,2 +1,2 @@
 prettier --check src scripts && npm run lint && npm run build
-(cd rust-utmmmmm && cargo fmt --check && cargo build)
+(export PATH="$HOME/.cargo/bin:$PATH" && cd rust-utmmmmm && cargo fmt --check && cargo build)
