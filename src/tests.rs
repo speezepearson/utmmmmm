@@ -393,14 +393,14 @@ fn test_decode_needs_more_than_10k_symbols() {
 #[test]
 fn test_faithful_accept_immediately() {
     let spec = &*ACCEPT_IMMEDIATELY_SPEC;
-    let mut tm = RunningTuringMachine::new(spec);
+    let tm = RunningTuringMachine::new(spec);
     assert_faithful(tm, 100, 10_000);
 }
 
 #[test]
 fn test_faithful_reject_immediately() {
     let spec = &*REJECT_IMMEDIATELY_SPEC;
-    let mut tm = RunningTuringMachine::new(spec);
+    let tm = RunningTuringMachine::new(spec);
     assert_faithful(tm, 100, 10_000);
 }
 
