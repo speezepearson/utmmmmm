@@ -1,1 +1,0 @@
-prettier --check src scripts && npm run lint && npm run build
