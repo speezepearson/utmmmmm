@@ -131,23 +131,6 @@ fn assert_faithful<Spec: TuringMachineSpec + std::fmt::Debug>(
 // ════════════════════════════════════════════════════════════════════
 
 #[test]
-fn test_accept_immediately() {
-    use AccImmSymbol::*;
-    // This spec accepts when it encounters a symbol with no transition.
-    // (Init, One) has no rule, so it halts in the accepting state Init.
-    let (status, _) = run_guest_direct(&*ACCEPT_IMMEDIATELY_SPEC, &[One], 100);
-    assert_eq!(status, "accept");
-}
-
-#[test]
-fn test_reject_immediately() {
-    use RejImmSymbol::*;
-    // Same structure but Init is not in the accepting set.
-    let (status, _) = run_guest_direct(&*REJECT_IMMEDIATELY_SPEC, &[One], 100);
-    assert_eq!(status, "reject");
-}
-
-#[test]
 fn test_flip_bits_direct() {
     use FlipBitsSymbol::*;
     let (status, tm) = run_guest_direct(&*FLIP_BITS_SPEC, &[Zero, One], 100);
@@ -248,15 +231,13 @@ fn test_encode_decode_roundtrip_palindrome() {
 
 #[test]
 fn test_utm_accept_immediately() {
-    use AccImmSymbol::*;
-    let (status, _) = run_via_utm(&*ACCEPT_IMMEDIATELY_SPEC, &[One], 10_000);
+    let (status, _) = run_via_utm(&*ACCEPT_IMMEDIATELY_SPEC, &[], 10_000);
     assert_eq!(status, "accept");
 }
 
 #[test]
 fn test_utm_reject_immediately() {
-    use RejImmSymbol::*;
-    let (status, _) = run_via_utm(&*REJECT_IMMEDIATELY_SPEC, &[One], 10_000);
+    let (status, _) = run_via_utm(&*REJECT_IMMEDIATELY_SPEC, &[], 10_000);
     assert_eq!(status, "reject");
 }
 
@@ -411,19 +392,15 @@ fn test_decode_needs_more_than_10k_symbols() {
 
 #[test]
 fn test_faithful_accept_immediately() {
-    use AccImmSymbol::*;
     let spec = &*ACCEPT_IMMEDIATELY_SPEC;
     let mut tm = RunningTuringMachine::new(spec);
-    tm.tape = vec![One];
     assert_faithful(tm, 100, 10_000);
 }
 
 #[test]
 fn test_faithful_reject_immediately() {
-    use RejImmSymbol::*;
     let spec = &*REJECT_IMMEDIATELY_SPEC;
     let mut tm = RunningTuringMachine::new(spec);
-    tm.tape = vec![One];
     assert_faithful(tm, 100, 10_000);
 }
 
@@ -485,10 +462,8 @@ fn test_faithful_double_x() {
 fn test_faithful_utm_running_accept_immediately() {
     // Smoke-test recursion: a UTM running AcceptImmediately,
     // then assert_faithful runs *that* through the UTM.
-    use AccImmSymbol::*;
     let acc_spec = &*ACCEPT_IMMEDIATELY_SPEC;
-    let mut inner_tm = RunningTuringMachine::new(acc_spec);
-    inner_tm.tape = vec![One];
+    let inner_tm = RunningTuringMachine::new(acc_spec);
 
     // Encode the inner TM into a UTM tape
     let encoded_inner = MyUtmEncodingScheme::encode(&inner_tm);
@@ -617,8 +592,7 @@ fn bench_compiled_vs_interpreted() {
 
     // Build utm(encode(utm(encode(accept_immediately))))
     let acc_spec = &*ACCEPT_IMMEDIATELY_SPEC;
-    let mut inner_tm = RunningTuringMachine::new(acc_spec);
-    inner_tm.tape = vec![AccImmSymbol::One];
+    let inner_tm = RunningTuringMachine::new(acc_spec);
     let inner_encoded = MyUtmEncodingScheme::encode(&inner_tm);
 
     let mut mid_tm = RunningTuringMachine::new(utm);

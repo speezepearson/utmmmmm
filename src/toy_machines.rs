@@ -16,19 +16,15 @@ pub enum AccImmState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum AccImmSymbol {
     Blank,
-    One,
 }
 pub static ACCEPT_IMMEDIATELY_SPEC: LazyLock<SimpleTuringMachineSpec<AccImmState, AccImmSymbol>> =
     LazyLock::new(|| SimpleTuringMachineSpec {
         initial: AccImmState::Init,
         blank: AccImmSymbol::Blank,
         accepting: HashSet::from([AccImmState::Init]),
-        transitions: HashMap::from([(
-            (AccImmState::Init, AccImmSymbol::Blank),
-            (AccImmState::Init, AccImmSymbol::One, Dir::Right),
-        )]),
+        transitions: HashMap::new(),
         all_states: vec![AccImmState::Init],
-        all_symbols: vec![AccImmSymbol::Blank, AccImmSymbol::One],
+        all_symbols: vec![AccImmSymbol::Blank],
     });
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -38,19 +34,15 @@ pub enum RejImmState {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum RejImmSymbol {
     Blank,
-    One,
 }
 pub static REJECT_IMMEDIATELY_SPEC: LazyLock<SimpleTuringMachineSpec<RejImmState, RejImmSymbol>> =
     LazyLock::new(|| SimpleTuringMachineSpec {
         initial: RejImmState::Init,
         blank: RejImmSymbol::Blank,
         accepting: HashSet::new(),
-        transitions: HashMap::from([(
-            (RejImmState::Init, RejImmSymbol::Blank),
-            (RejImmState::Init, RejImmSymbol::One, Dir::Right),
-        )]),
+        transitions: HashMap::new(),
         all_states: vec![RejImmState::Init],
-        all_symbols: vec![RejImmSymbol::Blank, RejImmSymbol::One],
+        all_symbols: vec![RejImmSymbol::Blank],
     });
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -228,7 +220,7 @@ mod tests {
     fn accept_immediately() {
         use AccImmSymbol::*;
         let mut tm = RunningTuringMachine::new(&*ACCEPT_IMMEDIATELY_SPEC);
-        tm.tape = vec![Blank, One];
+        tm.tape = vec![Blank];
         let result = run_tm(&mut tm, 1000, None);
         assert!(matches!(result, Ok(HaltReason::Accepted { .. })));
     }
@@ -237,7 +229,7 @@ mod tests {
     fn reject_immediately() {
         use RejImmSymbol::*;
         let mut tm = RunningTuringMachine::new(&*REJECT_IMMEDIATELY_SPEC);
-        tm.tape = vec![Blank, One];
+        tm.tape = vec![Blank];
         let result = run_tm(&mut tm, 1000, None);
         assert!(matches!(result, Ok(HaltReason::Rejected { .. })));
     }

@@ -12,7 +12,6 @@ fn main() {
             |s| format!("{:?}", s),
             |s| match s {
                 AccImmSymbol::Blank => '_',
-                AccImmSymbol::One => '1',
             },
         ),
         export_spec(
@@ -23,7 +22,6 @@ fn main() {
             |s| format!("{:?}", s),
             |s| match s {
                 RejImmSymbol::Blank => '_',
-                RejImmSymbol::One => '1',
             },
         ),
         export_spec(
