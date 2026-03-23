@@ -362,7 +362,7 @@ pub enum Symbol {
     Comma,
     Caret,
     L,
-    D,
+    R,
     Dot,
     Star,
     Gt,
@@ -385,7 +385,7 @@ impl std::fmt::Display for Symbol {
                 Symbol::Comma => ",",
                 Symbol::Caret => "^",
                 Symbol::L => "L",
-                Symbol::D => "D",
+                Symbol::R => "R",
                 Symbol::Dot => ".",
                 Symbol::Star => "*",
                 Symbol::Gt => ">",
@@ -406,7 +406,7 @@ const ALL_SYMBOLS: [Symbol; 16] = [
     Symbol::Comma,
     Symbol::Caret,
     Symbol::L,
-    Symbol::D,
+    Symbol::R,
     Symbol::Dot,
     Symbol::Star,
     Symbol::Gt,
@@ -597,7 +597,7 @@ impl MyUtmEncodingScheme {
             tape.push(Symbol::Pipe);
             tape.push(match dir {
                 Dir::Left => Symbol::L,
-                Dir::Right => Symbol::D,
+                Dir::Right => Symbol::R,
             });
         }
 
@@ -725,7 +725,7 @@ fn seek_home(m: &mut RuleSet, from: State, to: State) {
             Symbol::Star,
             Symbol::Gt,
             Symbol::L,
-            Symbol::D,
+            Symbol::R,
         ],
     );
     m.add(from, Symbol::Dollar, to, Symbol::Dollar, Dir::Right);
@@ -747,7 +747,7 @@ fn seek_star(m: &mut RuleSet, from: State, to: State) {
             Symbol::Caret,
             Symbol::Dot,
             Symbol::L,
-            Symbol::D,
+            Symbol::R,
         ],
     );
     m.add(from, Symbol::Star, to, Symbol::Star, Dir::Right);
@@ -763,8 +763,8 @@ fn build_utm_rules() -> RuleSet {
     let mut r = RuleSet::new();
 
     // Symbol groups
-    let rule_internals: &[Symbol] = &[Zero, One, X, Y, Pipe, L, D];
-    let rule_all: &[Symbol] = &[Zero, One, X, Y, Pipe, L, D, Semi, Dot, Star];
+    let rule_internals: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R];
+    let rule_all: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R, Semi, Dot, Star];
     let bits: &[Symbol] = &[Zero, One];
     let marked_bits: &[Symbol] = &[X, Y];
     let bits_and_marked: &[Symbol] = &[Zero, One, X, Y];
@@ -908,7 +908,7 @@ fn build_utm_rules() -> RuleSet {
     }
     {
         let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-        syms.extend_from_slice(&[Semi, Hash, Pipe, Dot, L, D]);
+        syms.extend_from_slice(&[Semi, Hash, Pipe, Dot, L, R]);
         scan_left(&mut r, StfFindStar, &syms);
         r.add(StfFindStar, Star, StfRestoreRule, Dot, Dir::Right);
     }
@@ -1332,7 +1332,7 @@ fn build_utm_rules() -> RuleSet {
     }
     {
         r.add(RdRead, L, MoveLeft, L, Dir::Left);
-        r.add(RdRead, D, MoveRight, D, Dir::Left);
+        r.add(RdRead, R, MoveRight, R, Dir::Left);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -1341,7 +1341,7 @@ fn build_utm_rules() -> RuleSet {
     {
         let mr = MoveRight;
         let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.extend_from_slice(&[Pipe, L, D]);
+        syms.extend_from_slice(&[Pipe, L, R]);
         scan_left(&mut r, mr, &syms);
         r.add(mr, Star, MrNav, Dot, Dir::Right);
     }
@@ -1471,7 +1471,7 @@ fn build_utm_rules() -> RuleSet {
     {
         let ml = MoveLeft;
         let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.extend_from_slice(&[Pipe, L, D]);
+        syms.extend_from_slice(&[Pipe, L, R]);
         scan_left(&mut r, ml, &syms);
         r.add(ml, Star, MlNav, Dot, Dir::Right);
     }
