@@ -1,4 +1,5 @@
 pub mod compiled;
+pub mod delta;
 pub mod infinity;
 pub mod json_export;
 pub mod optimization_hints;

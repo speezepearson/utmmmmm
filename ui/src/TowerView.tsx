@@ -2,36 +2,17 @@ import { useEffect, useRef, useState } from "react";
 
 const GREEN_SYMS = new Set(["*", "X", "Y", "^", ">"]);
 
-interface TowerDeltaLevel {
-  head_pos: number;
-  state: string;
-  tape_len: number;
-  overwritten: [number, string][];
-}
-
-interface TowerDelta {
+interface TowerViewState {
   steps: number;
-  guest_steps: number;
-  steps_per_sec: number;
-  tower: TowerDeltaLevel[];
-}
-
-function reconstructTape(
-  unblemished: string,
-  overwritten: [number, string][],
-  end: number,
-): string {
-  const chars = unblemished.slice(0, end).split("");
-  // Pad with '_' if end > unblemished length
-  while (chars.length < end) {
-    chars.push("_");
-  }
-  for (const [idx, ch] of overwritten) {
-    if (idx < end) {
-      chars[idx] = ch;
-    }
-  }
-  return chars.join("");
+  guestSteps: number;
+  stepsPerSec: number;
+  tower: Array<{
+    state: string;
+    headPos: number;
+    maxHeadPos: number;
+    tape: string;
+    tapeLen: number;
+  }>;
 }
 
 function colorizeTape(tape: string, headPos: number): string {
@@ -52,41 +33,98 @@ function colorizeTape(tape: string, headPos: number): string {
 }
 
 export function TowerView() {
-  const [unblemished, setUnblemished] = useState<string | null>(null);
-  const [data, setData] = useState<TowerDelta | null>(null);
-  const maxHeadPos = useRef<number[]>([]);
+  const [data, setData] = useState<TowerViewState | null>(null);
+  const tapesRef = useRef<string[]>([]);
+  const unblemishedRef = useRef<string>("");
 
-  // Fetch unblemished tape once on mount
-  useEffect(() => {
-    fetch("/api/tape")
-      .then((res) => res.text())
-      .then(setUnblemished)
-      .catch(() => {
-        // SWALLOW_EXCEPTION: server may not be ready yet; page reload will retry
-      });
-  }, []);
-
-  // SSE stream for tower deltas
   useEffect(() => {
     const es = new EventSource("/api/tower");
     es.onmessage = (event) => {
-      const json: TowerDelta = JSON.parse(event.data);
-      // Track max head_pos per level
-      while (maxHeadPos.current.length < json.tower.length) {
-        maxHeadPos.current.push(0);
-      }
-      for (let i = 0; i < json.tower.length; i++) {
-        const hp = json.tower[i].head_pos;
-        if (hp > maxHeadPos.current[i]) {
-          maxHeadPos.current[i] = hp;
+      const msg = JSON.parse(event.data);
+
+      if (msg.type === "total") {
+        // Store unblemished reference tape
+        unblemishedRef.current = msg.unblemished;
+        // Initialize tapes from total event
+        tapesRef.current = msg.tower.map(
+          (l: { tape: string }) => l.tape,
+        );
+        setData({
+          steps: msg.steps,
+          guestSteps: msg.guest_steps,
+          stepsPerSec: msg.steps_per_sec,
+          tower: msg.tower.map(
+            (
+              l: {
+                state: string;
+                head_pos: number;
+                max_head_pos: number;
+                tape: string;
+                tape_len: number;
+              },
+            ) => ({
+              state: l.state,
+              headPos: l.head_pos,
+              maxHeadPos: l.max_head_pos,
+              tape: l.tape,
+              tapeLen: l.tape_len,
+            }),
+          ),
+        });
+      } else if (msg.type === "delta") {
+        // Apply new_overwrites to stored tapes
+        for (let i = 0; i < msg.tower.length; i++) {
+          const level = msg.tower[i];
+          let tape = tapesRef.current[i] || "";
+          const chars = tape.split("");
+          // Extend tape to max_head_pos + 10 using unblemished content
+          const end = Math.max(level.max_head_pos, level.head_pos) + 10;
+          const ub = unblemishedRef.current;
+          while (chars.length < end) {
+            const pos = chars.length;
+            chars.push(pos < ub.length ? ub[pos] : "_");
+          }
+          for (const [pos, ch] of level.new_overwrites as [
+            number,
+            string,
+          ][]) {
+            while (chars.length <= pos) chars.push("_");
+            chars[pos] = ch;
+          }
+          tapesRef.current[i] = chars.join("");
         }
+        // Trim if tower shrank
+        tapesRef.current.length = msg.tower.length;
+
+        setData({
+          steps: msg.total_steps,
+          guestSteps: msg.guest_steps,
+          stepsPerSec: msg.steps_per_sec,
+          tower: msg.tower.map(
+            (
+              l: {
+                state: string;
+                head_pos: number;
+                max_head_pos: number;
+                new_overwrites: [number, string][];
+                tape_len: number;
+              },
+              i: number,
+            ) => ({
+              state: l.state,
+              headPos: l.head_pos,
+              maxHeadPos: l.max_head_pos,
+              tape: tapesRef.current[i],
+              tapeLen: l.tape_len,
+            }),
+          ),
+        });
       }
-      setData(json);
     };
     return () => es.close();
   }, []);
 
-  if (!unblemished || !data) {
+  if (!data) {
     return <div style={{ padding: "16px" }}>Loading...</div>;
   }
 
@@ -94,7 +132,7 @@ export function TowerView() {
     <div style={{ textAlign: "left", padding: "16px" }}>
       <h2 style={{ marginBottom: "8px" }}>
         Tower &mdash; {data.steps.toLocaleString()} steps
-        {data.steps_per_sec > 0 && (
+        {data.stepsPerSec > 0 && (
           <span
             style={{
               fontWeight: "normal",
@@ -102,16 +140,15 @@ export function TowerView() {
               marginLeft: "12px",
             }}
           >
-            ({data.steps_per_sec.toFixed(1)}M steps/s,{" "}
-            {data.guest_steps.toLocaleString()} guest steps)
+            ({data.stepsPerSec.toFixed(1)}M steps/s,{" "}
+            {data.guestSteps.toLocaleString()} guest steps)
           </span>
         )}
       </h2>
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {data.tower.map((level, i) => {
-          const mhp = maxHeadPos.current[i] ?? level.head_pos;
-          const end = Math.max(mhp, level.head_pos) + 10;
-          const tape = reconstructTape(unblemished, level.overwritten, end);
+          const end = Math.max(level.maxHeadPos, level.headPos) + 10;
+          const tape = level.tape.slice(0, end);
           return (
             <div
               key={i}
@@ -131,7 +168,7 @@ export function TowerView() {
                 }}
               >
                 L{i} &middot; {level.state} &middot;{" "}
-                {level.tape_len.toLocaleString()} symbols
+                {level.tapeLen.toLocaleString()} symbols
               </div>
               <div
                 style={{
@@ -141,7 +178,7 @@ export function TowerView() {
                   overflowWrap: "break-word",
                 }}
                 dangerouslySetInnerHTML={{
-                  __html: colorizeTape(tape, level.head_pos),
+                  __html: colorizeTape(tape, level.headPos),
                 }}
               />
             </div>
