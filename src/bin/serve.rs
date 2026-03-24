@@ -178,8 +178,8 @@ fn sim_thread(
     let start_time = Instant::now();
     let mut prev_cstate = tm.state;
 
-    // Profiling: time spent in the snapshot block
-    let mut snapshot_time_accum = Duration::ZERO;
+    // Profiling: time spent doing things other than the hot loop
+    let mut total_overhead = Duration::ZERO;
     let mut last_profile_print = Instant::now();
 
     // Initial snapshot
@@ -241,6 +241,7 @@ fn sim_thread(
         }
 
         if total_steps % 100_000 == 0 {
+            let overhead_start_at = Instant::now();
             if let Some(ref sp_path) = savepoint_path {
                 if total_steps - last_savepoint_step >= 1_000_000_000 {
                     save_savepoint(sp_path, total_steps, guest_steps, &tm);
@@ -249,7 +250,6 @@ fn sim_thread(
             }
 
             if last_snapshot.elapsed() >= snapshot_interval {
-                let snap_start = Instant::now();
                 let decompiled = compiled.decompile(&tm);
                 let wall_secs = start_time.elapsed().as_secs_f64().max(0.001);
                 let steps_per_sec = total_steps as f64 / wall_secs / 1_000_000.0;
@@ -264,20 +264,20 @@ fn sim_thread(
                 ));
                 publish(&latest, &sse_clients, snap);
                 last_snapshot = Instant::now();
-                snapshot_time_accum += snap_start.elapsed();
             }
 
             if last_profile_print.elapsed() >= Duration::from_secs(10) {
                 let elapsed = last_profile_print.elapsed();
                 eprintln!(
                     "[profile] snapshot block: {:.1}ms / {:.1}s ({:.2}%)",
-                    snapshot_time_accum.as_secs_f64() * 1000.0,
+                    total_overhead.as_secs_f64() * 1000.0,
                     elapsed.as_secs_f64(),
-                    snapshot_time_accum.as_secs_f64() / elapsed.as_secs_f64() * 100.0,
+                    total_overhead.as_secs_f64() / elapsed.as_secs_f64() * 100.0,
                 );
-                snapshot_time_accum = Duration::ZERO;
                 last_profile_print = Instant::now();
             }
+
+            total_overhead += overhead_start_at.elapsed();
         }
     }
 }
