@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, memo } from "react";
 
 // ── L0 state from server ──
 
@@ -209,25 +209,23 @@ function CharSpan({
   headPos: number;
   startIdx: number;
 }) {
-  const parts: React.ReactNode[] = [];
-  let run = "";
-  let runStart = startIdx;
-  for (let i = 0; i < text.length; i++) {
-    const globalIdx = startIdx + i;
-    if (globalIdx === headPos) {
-      if (run) parts.push(<span key={runStart}>{run}</span>);
-      parts.push(<HeadChar key={globalIdx} ch={text[i]} />);
-      run = "";
-      runStart = globalIdx + 1;
-    } else {
-      run += text[i];
-    }
+  // Fast path: head is not in this range, just return plain text
+  if (headPos < startIdx || headPos >= startIdx + text.length) {
+    return <>{text}</>;
   }
-  if (run) parts.push(<span key={runStart}>{run}</span>);
-  return <>{parts}</>;
+  const localIdx = headPos - startIdx;
+  const before = text.slice(0, localIdx);
+  const after = text.slice(localIdx + 1);
+  return (
+    <>
+      {before}
+      <HeadChar ch={text[localIdx]} />
+      {after}
+    </>
+  );
 }
 
-function SemanticTape({
+const SemanticTape = memo(function SemanticTape({
   tape,
   headPos,
 }: {
@@ -278,23 +276,49 @@ function SemanticTape({
       />
       <span className="st-section st-rules">
         <span className="st-label">rules</span>
-        {parsed.rules.map((rule, i) => {
-          const isActive = rule.startsWith("*");
-          return (
-            <span key={i}>
-              {i > 0 && <span className="st-delim">;</span>}
-              <span
-                className={`st-rule${isActive ? " st-rule-active" : ""}`}
-              >
-                <CharSpan
-                  text={rule}
-                  headPos={headPos}
-                  startIdx={rulePositions[i]}
-                />
-              </span>
-            </span>
-          );
-        })}
+        {(() => {
+          // Batch adjacent inactive rules that don't contain the head into single text runs
+          const elements: React.ReactNode[] = [];
+          let batch = "";
+          let batchStart = -1;
+          for (let i = 0; i < parsed.rules.length; i++) {
+            const rule = parsed.rules[i];
+            const rStart = rulePositions[i];
+            const rEnd = rStart + rule.length;
+            const isActive = rule.startsWith("*");
+            const hasHead = headPos >= rStart && headPos < rEnd;
+            if (!isActive && !hasHead) {
+              // Accumulate into batch
+              if (batch) batch += ";";
+              else batchStart = i;
+              batch += rule;
+            } else {
+              // Flush batch
+              if (batch) {
+                if (elements.length > 0) batch = ";" + batch;
+                elements.push(
+                  <span key={`b${batchStart}`} className="st-rule">{batch}</span>,
+                );
+                batch = "";
+              }
+              elements.push(
+                <span key={i}>
+                  {elements.length > 0 && <span className="st-delim">;</span>}
+                  <span className={`st-rule${isActive ? " st-rule-active" : ""}`}>
+                    <CharSpan text={rule} headPos={headPos} startIdx={rStart} />
+                  </span>
+                </span>,
+              );
+            }
+          }
+          if (batch) {
+            if (elements.length > 0) batch = ";" + batch;
+            elements.push(
+              <span key={`b${batchStart}`} className="st-rule">{batch}</span>,
+            );
+          }
+          return elements;
+        })()}
       </span>
       <CharSpan text="#" headPos={headPos} startIdx={afterRules - 1} />
       <span className="st-section st-accepting">
@@ -326,27 +350,50 @@ function SemanticTape({
       <CharSpan text="#" headPos={headPos} startIdx={afterBlank - 1} />
       <span className="st-section st-tape-cells">
         <span className="st-label">tape</span>
-        {parsed.tapeCells.map((cell, i) => {
-          const isActive = cell.startsWith("^") || cell.startsWith(">");
-          return (
-            <span key={i}>
-              {i > 0 && <span className="st-delim">,</span>}
-              <span
-                className={`st-cell${isActive ? " st-cell-active" : ""}`}
-              >
-                <CharSpan
-                  text={cell}
-                  headPos={headPos}
-                  startIdx={cellPositions[i]}
-                />
-              </span>
-            </span>
-          );
-        })}
+        {(() => {
+          const elements: React.ReactNode[] = [];
+          let batch = "";
+          let batchStart = -1;
+          for (let i = 0; i < parsed.tapeCells.length; i++) {
+            const cell = parsed.tapeCells[i];
+            const cStart = cellPositions[i];
+            const cEnd = cStart + cell.length;
+            const isActive = cell.startsWith("^") || cell.startsWith(">");
+            const hasHead = headPos >= cStart && headPos < cEnd;
+            if (!isActive && !hasHead) {
+              if (batch) batch += ",";
+              else batchStart = i;
+              batch += cell;
+            } else {
+              if (batch) {
+                if (elements.length > 0) batch = "," + batch;
+                elements.push(
+                  <span key={`b${batchStart}`} className="st-cell">{batch}</span>,
+                );
+                batch = "";
+              }
+              elements.push(
+                <span key={i}>
+                  {elements.length > 0 && <span className="st-delim">,</span>}
+                  <span className={`st-cell${isActive ? " st-cell-active" : ""}`}>
+                    <CharSpan text={cell} headPos={headPos} startIdx={cStart} />
+                  </span>
+                </span>,
+              );
+            }
+          }
+          if (batch) {
+            if (elements.length > 0) batch = "," + batch;
+            elements.push(
+              <span key={`b${batchStart}`} className="st-cell">{batch}</span>,
+            );
+          }
+          return elements;
+        })()}
       </span>
     </span>
   );
-}
+});
 
 // ── Main component ──
 
@@ -384,19 +431,28 @@ export function TowerView() {
           tapeLen: msg.tape_len,
         });
       } else if (msg.type === "delta") {
-        // Apply overwrites to L0 tape
-        const chars = tapeRef.current.split("");
+        // Apply overwrites to L0 tape using array buffer for efficiency
+        let tape = tapeRef.current;
         const end = Math.max(msg.max_head_pos, msg.head_pos) + 10;
-        const ub = unblemishedRef.current;
-        while (chars.length < end) {
-          const pos = chars.length;
-          chars.push(pos < ub.length ? ub[pos] : "_");
+        if (tape.length < end) {
+          const ub = unblemishedRef.current;
+          const pad = [];
+          for (let p = tape.length; p < end; p++) {
+            pad.push(p < ub.length ? ub[p] : "_");
+          }
+          tape = tape + pad.join("");
         }
-        for (const [pos, ch] of msg.new_overwrites as [number, string][]) {
-          while (chars.length <= pos) chars.push("_");
-          chars[pos] = ch;
+        const overwrites = msg.new_overwrites as [number, string][];
+        if (overwrites.length > 0) {
+          // Only split/join if there are actual overwrites
+          const chars = tape.split("");
+          for (const [pos, ch] of overwrites) {
+            while (chars.length <= pos) chars.push("_");
+            chars[pos] = ch;
+          }
+          tape = chars.join("");
         }
-        tapeRef.current = chars.join("");
+        tapeRef.current = tape;
 
         setL0({
           steps: msg.total_steps,
@@ -457,7 +513,6 @@ export function TowerView() {
                 background: "var(--code-bg)",
                 padding: "8px 12px",
                 borderRadius: "6px",
-                transition: "height 0.3s ease, min-height 0.3s ease",
                 overflow: "hidden",
               }}
             >
