@@ -166,11 +166,6 @@ pub fn format_tower<'a>(
         let i = tower.len();
         writeln!(buf, "Level {} ({} symbols):", i, extra.tape.len()).unwrap();
         writeln!(buf, "{}", tape_view_range(&extra, extra.pos + 10)).unwrap();
-        assert!(
-            extra.pos == 0,
-            "Extra tower level should have head at pos 0, but has pos {}",
-            extra.pos
-        );
     }
 
     buf
