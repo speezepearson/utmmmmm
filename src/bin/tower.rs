@@ -10,43 +10,32 @@ use utmmmmm::utm::{MyUtmEncodingScheme, State, Symbol, UtmEncodingScheme, UTM_SP
 
 type UtmTm<'a> = RunningTuringMachine<'a, SimpleTuringMachineSpec<State, Symbol>>;
 
-const RADIUS: usize = 50;
+/// Format a tape slice with the head cell highlighted in light red.
+/// Shows tape[0..end].
+fn tape_view_range(tm: &UtmTm, end: usize) -> String {
+    let mut out = String::from("    ");
+    let blank = tm.spec.blank();
 
-/// Format a tape view: 30 symbols on each side of the head, with ^ below.
-fn tape_view(tm: &UtmTm) -> String {
-    let mut top = String::new();
-    let mut bot = String::new();
-
-    let prefix = if tm.pos > RADIUS { "... " } else { "    " };
-    top.push_str(prefix);
-    bot.push_str("    ");
-
-    for i in 0..(2 * RADIUS + 1) {
-        let tape_idx = tm.pos as isize + i as isize - RADIUS as isize;
-        let sym = if tape_idx < 0 {
-            " ".to_string()
+    for i in 0..end {
+        let sym = if i < tm.tape.len() {
+            tm.tape[i]
         } else {
-            let idx = tape_idx as usize;
-            if idx < tm.tape.len() {
-                tm.tape[idx].to_string()
-            } else {
-                tm.spec.blank().to_string()
-            }
+            blank
         };
-        top.push_str(&sym);
-
-        if i == RADIUS {
-            bot.push('^');
+        if i == tm.pos {
+            write!(out, "\x1b[101m{}\x1b[0m", sym).unwrap();
         } else {
-            bot.push(' ');
+            write!(out, "{}", sym).unwrap();
         }
     }
 
-    top.push_str(" ...");
-    bot.push_str(&format!(" (state={:?}, pos={})", tm.state, tm.pos));
-
-    format!("{}\n{}", top, bot)
+    if end < tm.tape.len() {
+        out.push_str(" ...");
+    }
+    write!(out, " (state={:?}, pos={})", tm.state, tm.pos).unwrap();
+    out
 }
+
 
 /// Decode tower[level+1] from tower[level], extending the tape as needed.
 /// Returns None if decoding fails (tape too short, etc.)
@@ -111,7 +100,7 @@ fn update_tower<'a>(
     }
 }
 
-fn format_tower(tower: &[UtmTm], total_steps: u64) -> String {
+fn format_tower(tower: &[UtmTm], total_steps: u64, base_max_pos: usize) -> String {
     let mut buf = String::new();
     writeln!(
         buf,
@@ -122,7 +111,11 @@ fn format_tower(tower: &[UtmTm], total_steps: u64) -> String {
 
     for (i, tm) in tower.iter().enumerate() {
         writeln!(buf, "Level {} ({} symbols):", i, tm.tape.len()).unwrap();
-        writeln!(buf, "{}", tape_view(tm)).unwrap();
+        if i == 0 {
+            writeln!(buf, "{}", tape_view_range(tm, base_max_pos + 10)).unwrap();
+        } else {
+            writeln!(buf, "{}", tape_view_range(tm, tm.tape.len() + 10)).unwrap();
+        }
     }
     buf
 }
@@ -224,6 +217,7 @@ fn main() {
     }
 
     let mut inf_extender = InfiniteTapeExtender;
+    let mut base_max_pos: usize = tm.pos;
 
     // Initialize tower
     let mut tower: Vec<UtmTm> = vec![compiled.decompile(&tm)];
@@ -231,7 +225,7 @@ fn main() {
     if tm.state == init_cstate {
         update_tower(utm, &mut tower, &mut prev_states, &mut inf_extender);
     }
-    eprint!("{}", format_tower(&tower, total_steps));
+    eprint!("{}", format_tower(&tower, total_steps, base_max_pos));
 
     let print_interval = std::time::Duration::from_millis(100);
     let mut last_print = std::time::Instant::now();
@@ -255,11 +249,14 @@ fn main() {
                 Dir::Right => tm.pos + 1,
             };
             total_steps += 1;
+            if tm.pos > base_max_pos {
+                base_max_pos = tm.pos;
+            }
         } else {
             // Halted
             tower[0] = compiled.decompile(&tm);
             update_tower(utm, &mut tower, &mut prev_states, &mut inf_extender);
-            eprint!("{}", format_tower(&tower, total_steps));
+            eprint!("{}", format_tower(&tower, total_steps, base_max_pos));
             let status = if compiled.is_accepting(tm.state) {
                 "accept"
             } else {
@@ -301,7 +298,7 @@ fn main() {
                 let wall_secs = start_time.elapsed().as_secs_f64().max(0.001);
                 eprint!(
                     "{}  ({} guest steps, {:.1}M steps/s)\n",
-                    format_tower(&tower, total_steps),
+                    format_tower(&tower, total_steps, base_max_pos),
                     guest_steps,
                     total_steps as f64 / wall_secs / 1_000_000.0
                 );
