@@ -8,9 +8,10 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tiny_http::{Header, Response, Server};
-use utmmmmm::compiled::{CState, CSymbol, CompiledTapeExtender, CompiledTuringMachineSpec};
+use utmmmmm::compiled::{CState, CompiledTapeExtender, CompiledTuringMachineSpec};
 use utmmmmm::delta::{compute_new_overwrites, current_overwrites, ClientLevelState};
 use utmmmmm::infinity::InfiniteTapeExtender;
+use utmmmmm::savepoint::{load_savepoint, save_savepoint};
 use utmmmmm::tm::{
     Dir, RunningTuringMachine, SimpleTuringMachineSpec, TapeExtender, TuringMachineSpec,
 };
@@ -120,48 +121,6 @@ fn publish(
     *latest.lock().unwrap() = Some(Arc::clone(&snap));
     let mut clients = sse_clients.lock().unwrap();
     clients.retain(|tx| tx.send(Arc::clone(&snap)).is_ok());
-}
-
-// ── Savepoint ──
-
-fn save_savepoint(
-    path: &str,
-    total_steps: u64,
-    guest_steps: u64,
-    tm: &RunningTuringMachine<CompiledTuringMachineSpec<SimpleTuringMachineSpec<State, Symbol>>>,
-) {
-    let tmp = format!("{}.tmp", path);
-    let mut f = std::io::BufWriter::new(std::fs::File::create(&tmp).expect("create savepoint"));
-    f.write_all(&total_steps.to_le_bytes()).unwrap();
-    f.write_all(&guest_steps.to_le_bytes()).unwrap();
-    f.write_all(&[tm.state.0]).unwrap();
-    f.write_all(&(tm.pos as u64).to_le_bytes()).unwrap();
-    f.write_all(&(tm.tape.len() as u64).to_le_bytes()).unwrap();
-    let tape_bytes: Vec<u8> = tm.tape.iter().map(|s| s.0).collect();
-    f.write_all(&tape_bytes).unwrap();
-    drop(f);
-    std::fs::rename(&tmp, path).expect("rename savepoint");
-    eprintln!("Saved savepoint at step {} to {}", total_steps, path);
-}
-
-fn load_savepoint(path: &str) -> Option<(u64, u64, CState, usize, Vec<CSymbol>)> {
-    let data = std::fs::read(path).ok()?;
-    if data.len() < 25 {
-        return None;
-    }
-    let total_steps = u64::from_le_bytes(data[0..8].try_into().unwrap());
-    let guest_steps = u64::from_le_bytes(data[8..16].try_into().unwrap());
-    let state = CState(data[16]);
-    let pos = u64::from_le_bytes(data[17..25].try_into().unwrap()) as usize;
-    let tape_len = u64::from_le_bytes(data[25..33].try_into().unwrap()) as usize;
-    if data.len() < 33 + tape_len {
-        return None;
-    }
-    let tape: Vec<CSymbol> = data[33..33 + tape_len]
-        .iter()
-        .map(|&b| CSymbol(b))
-        .collect();
-    Some((total_steps, guest_steps, state, pos, tape))
 }
 
 // ── Main simulation thread ──

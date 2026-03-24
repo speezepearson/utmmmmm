@@ -3,6 +3,7 @@ pub mod delta;
 pub mod infinity;
 pub mod json_export;
 pub mod optimization_hints;
+pub mod savepoint;
 pub mod tm;
 #[allow(dead_code)]
 pub mod toy_machines;
