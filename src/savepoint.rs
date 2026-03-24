@@ -2,9 +2,9 @@ use std::io::Write as IoWrite;
 
 use serde::{Deserialize, Serialize};
 
+use crate::compiled::CompiledTuringMachineSpec;
 use crate::compiled::{CState, CSymbol};
 use crate::tm::RunningTuringMachine;
-use crate::compiled::CompiledTuringMachineSpec;
 use crate::tm::SimpleTuringMachineSpec;
 
 #[derive(Serialize, Deserialize)]
@@ -38,14 +38,25 @@ pub fn save_savepoint<S: Copy + std::fmt::Debug, Y: Copy + std::fmt::Debug>(
     f.write_all(json.as_bytes()).unwrap();
     drop(f);
     std::fs::rename(&tmp, path).expect("rename savepoint");
-    eprintln!("Saved savepoint at step {} to {}", total_steps, path);
+    eprintln!(
+        "[{:?}] Saved savepoint at step {} to {}",
+        std::time::Instant::now(),
+        total_steps,
+        path
+    );
 }
 
 pub fn load_savepoint(path: &str) -> Option<(u64, u64, CState, usize, Vec<CSymbol>)> {
     let data = std::fs::read(path).ok()?;
     let sp: SavepointData = serde_json::from_slice(&data).ok()?;
     let tape: Vec<CSymbol> = sp.tape.iter().map(|&b| CSymbol(b)).collect();
-    Some((sp.total_steps, sp.guest_steps, CState(sp.state), sp.pos as usize, tape))
+    Some((
+        sp.total_steps,
+        sp.guest_steps,
+        CState(sp.state),
+        sp.pos as usize,
+        tape,
+    ))
 }
 
 /// Load a savepoint from the old binary format.

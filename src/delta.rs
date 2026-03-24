@@ -87,20 +87,20 @@ mod tests {
     #[test]
     fn test_total_then_two_deltas() {
         let reference = vec![
-            Symbol::Zero,  // 0
-            Symbol::One,   // 1
-            Symbol::Zero,  // 2
-            Symbol::One,   // 3
-            Symbol::Zero,  // 4
+            Symbol::Zero, // 0
+            Symbol::One,  // 1
+            Symbol::Zero, // 2
+            Symbol::One,  // 3
+            Symbol::Zero, // 4
         ];
 
         // === Total event: tape has position 1 changed to X ===
         let tape_0 = vec![
-            Symbol::Zero,  // 0: same
-            Symbol::X,     // 1: overwritten
-            Symbol::Zero,  // 2: same
-            Symbol::One,   // 3: same
-            Symbol::Zero,  // 4: same
+            Symbol::Zero, // 0: same
+            Symbol::X,    // 1: overwritten
+            Symbol::Zero, // 2: same
+            Symbol::One,  // 3: same
+            Symbol::Zero, // 4: same
         ];
 
         // The total event gives the full tape string
@@ -114,11 +114,11 @@ mod tests {
 
         // === Delta 1: position 2 also changed to Y ===
         let tape_1 = vec![
-            Symbol::Zero,  // 0: same
-            Symbol::X,     // 1: still overwritten (same)
-            Symbol::Y,     // 2: newly overwritten
-            Symbol::One,   // 3: same
-            Symbol::Zero,  // 4: same
+            Symbol::Zero, // 0: same
+            Symbol::X,    // 1: still overwritten (same)
+            Symbol::Y,    // 2: newly overwritten
+            Symbol::One,  // 3: same
+            Symbol::Zero, // 4: same
         ];
 
         let cur_1 = current_overwrites(&tape_1, &reference);
@@ -131,11 +131,11 @@ mod tests {
 
         // === Delta 2: position 1 reverted, position 3 changed to Star ===
         let tape_2 = vec![
-            Symbol::Zero,  // 0: same
-            Symbol::One,   // 1: reverted to unblemished
-            Symbol::Y,     // 2: still overwritten (same as delta 1)
-            Symbol::Star,  // 3: newly overwritten
-            Symbol::Zero,  // 4: same
+            Symbol::Zero, // 0: same
+            Symbol::One,  // 1: reverted to unblemished
+            Symbol::Y,    // 2: still overwritten (same as delta 1)
+            Symbol::Star, // 3: newly overwritten
+            Symbol::Zero, // 4: same
         ];
 
         let cur_2 = current_overwrites(&tape_2, &reference);
@@ -144,10 +144,7 @@ mod tests {
         // Position 1 reverted (client gets unblemished value "1")
         // Position 3 newly overwritten with "*"
         // Position 2 unchanged, not included
-        assert_eq!(
-            delta_2,
-            vec![(1, "1".to_string()), (3, "*".to_string())]
-        );
+        assert_eq!(delta_2, vec![(1, "1".to_string()), (3, "*".to_string())]);
         // Client now knows about {2: Y, 3: Star}
         assert_eq!(client.overwrites.len(), 2);
         assert_eq!(client.overwrites.get(&1), None);

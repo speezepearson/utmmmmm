@@ -63,7 +63,15 @@ fn main() {
         update_tower(utm, &mut tower, &mut inf_extender);
     }
     tower[0].max_head_pos = base_max_pos;
-    eprint!("{}", colorize_ansi(&format_tower(&mut tower, total_steps, utm, &mut inf_extender)));
+    eprint!(
+        "{}",
+        colorize_ansi(&format_tower(
+            &mut tower,
+            total_steps,
+            utm,
+            &mut inf_extender
+        ))
+    );
 
     let print_interval = std::time::Duration::from_millis(100);
     let mut last_print = std::time::Instant::now();
@@ -95,7 +103,15 @@ fn main() {
             tower[0].update_machine(compiled.decompile(&tm));
             tower[0].max_head_pos = base_max_pos;
             update_tower(utm, &mut tower, &mut inf_extender);
-            eprint!("{}", colorize_ansi(&format_tower(&mut tower, total_steps, utm, &mut inf_extender)));
+            eprint!(
+                "{}",
+                colorize_ansi(&format_tower(
+                    &mut tower,
+                    total_steps,
+                    utm,
+                    &mut inf_extender
+                ))
+            );
             let status = if compiled.is_accepting(tm.state) {
                 "accept"
             } else {
@@ -139,7 +155,12 @@ fn main() {
                 let wall_secs = start_time.elapsed().as_secs_f64().max(0.001);
                 eprint!(
                     "{}  ({} guest steps, {:.1}M steps/s)\n",
-                    colorize_ansi(&format_tower(&mut tower, total_steps, utm, &mut inf_extender)),
+                    colorize_ansi(&format_tower(
+                        &mut tower,
+                        total_steps,
+                        utm,
+                        &mut inf_extender
+                    )),
                     guest_steps,
                     total_steps as f64 / wall_secs / 1_000_000.0
                 );

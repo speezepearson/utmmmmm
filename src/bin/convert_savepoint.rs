@@ -24,7 +24,11 @@ fn main() {
         });
         eprintln!(
             "Converted {} -> {} (step {}, {} guest steps, tape len {})",
-            input_path, output_path, data.total_steps, data.guest_steps, data.tape.len()
+            input_path,
+            output_path,
+            data.total_steps,
+            data.guest_steps,
+            data.tape.len()
         );
     } else {
         println!("{}", json);

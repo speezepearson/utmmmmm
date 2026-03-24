@@ -115,11 +115,7 @@ pub fn tape_view_range(tm: &UtmTm, end: usize) -> String {
     let blank = tm.spec.blank();
 
     for i in 0..end {
-        let sym = if i < tm.tape.len() {
-            tm.tape[i]
-        } else {
-            blank
-        };
+        let sym = if i < tm.tape.len() { tm.tape[i] } else { blank };
         write!(out, "{}", sym).unwrap();
     }
 
@@ -224,7 +220,12 @@ pub fn format_tower<'a>(
 
     for (i, tl) in tower.iter().enumerate() {
         writeln!(buf, "Level {} ({} symbols):", i, tl.machine.tape.len()).unwrap();
-        writeln!(buf, "{}", tape_view_range(&tl.machine, tl.max_head_pos + 10)).unwrap();
+        writeln!(
+            buf,
+            "{}",
+            tape_view_range(&tl.machine, tl.max_head_pos + 10)
+        )
+        .unwrap();
     }
 
     // Decode and print one more level beyond the tower.

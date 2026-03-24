@@ -158,7 +158,10 @@ fn sim_thread(
             extender.extend(&mut tm.tape, tape_len);
             eprintln!(
                 "Loaded savepoint from {}: step {}, {} guest steps, tape len {}",
-                sp_path, total_steps, guest_steps, tm.tape.len()
+                sp_path,
+                total_steps,
+                guest_steps,
+                tm.tape.len()
             );
         }
     }
@@ -183,8 +186,13 @@ fn sim_thread(
     {
         let decompiled = compiled.decompile(&tm);
         let snap = Arc::new(build_snapshot(
-            &decompiled, base_max_pos, total_steps, guest_steps, 0.0,
-            &mut inf_extender, &mut reference,
+            &decompiled,
+            base_max_pos,
+            total_steps,
+            guest_steps,
+            0.0,
+            &mut inf_extender,
+            &mut reference,
         ));
         publish(&latest, &sse_clients, snap);
     }
@@ -210,8 +218,13 @@ fn sim_thread(
             // Halted
             let decompiled = compiled.decompile(&tm);
             let snap = Arc::new(build_snapshot(
-                &decompiled, base_max_pos, total_steps, guest_steps, 0.0,
-                &mut inf_extender, &mut reference,
+                &decompiled,
+                base_max_pos,
+                total_steps,
+                guest_steps,
+                0.0,
+                &mut inf_extender,
+                &mut reference,
             ));
             publish(&latest, &sse_clients, snap);
             if let Some(ref sp_path) = savepoint_path {
@@ -235,33 +248,37 @@ fn sim_thread(
                 }
             }
 
-        if last_snapshot.elapsed() >= snapshot_interval {
-            let snap_start = Instant::now();
-            let decompiled = compiled.decompile(&tm);
-            let wall_secs = start_time.elapsed().as_secs_f64().max(0.001);
-            let steps_per_sec = total_steps as f64 / wall_secs / 1_000_000.0;
-            let snap = Arc::new(build_snapshot(
-                &decompiled, base_max_pos, total_steps, guest_steps, steps_per_sec,
-                &mut inf_extender, &mut reference,
-            ));
-            publish(&latest, &sse_clients, snap);
-            last_snapshot = Instant::now();
-            snapshot_time_accum += snap_start.elapsed();
-        }
+            if last_snapshot.elapsed() >= snapshot_interval {
+                let snap_start = Instant::now();
+                let decompiled = compiled.decompile(&tm);
+                let wall_secs = start_time.elapsed().as_secs_f64().max(0.001);
+                let steps_per_sec = total_steps as f64 / wall_secs / 1_000_000.0;
+                let snap = Arc::new(build_snapshot(
+                    &decompiled,
+                    base_max_pos,
+                    total_steps,
+                    guest_steps,
+                    steps_per_sec,
+                    &mut inf_extender,
+                    &mut reference,
+                ));
+                publish(&latest, &sse_clients, snap);
+                last_snapshot = Instant::now();
+                snapshot_time_accum += snap_start.elapsed();
+            }
 
-        if last_profile_print.elapsed() >= Duration::from_secs(10) {
-            let elapsed = last_profile_print.elapsed();
-            eprintln!(
-                "[profile] snapshot block: {:.1}ms / {:.1}s ({:.2}%)",
-                snapshot_time_accum.as_secs_f64() * 1000.0,
-                elapsed.as_secs_f64(),
-                snapshot_time_accum.as_secs_f64() / elapsed.as_secs_f64() * 100.0,
-            );
-            snapshot_time_accum = Duration::ZERO;
-            last_profile_print = Instant::now();
+            if last_profile_print.elapsed() >= Duration::from_secs(10) {
+                let elapsed = last_profile_print.elapsed();
+                eprintln!(
+                    "[profile] snapshot block: {:.1}ms / {:.1}s ({:.2}%)",
+                    snapshot_time_accum.as_secs_f64() * 1000.0,
+                    elapsed.as_secs_f64(),
+                    snapshot_time_accum.as_secs_f64() / elapsed.as_secs_f64() * 100.0,
+                );
+                snapshot_time_accum = Duration::ZERO;
+                last_profile_print = Instant::now();
+            }
         }
-        }
-
     }
 }
 
@@ -316,11 +333,8 @@ fn sse_client_thread(
 
     // Stream delta events
     while let Ok(snapshot) = rx.recv() {
-        let new_overwrites = compute_new_overwrites(
-            &snapshot.overwrites,
-            &mut client_state,
-            &unblemished_syms,
-        );
+        let new_overwrites =
+            compute_new_overwrites(&snapshot.overwrites, &mut client_state, &unblemished_syms);
         let delta = DeltaEventJson {
             event_type: "delta",
             total_steps: snapshot.total_steps,
@@ -380,21 +394,15 @@ fn main() {
         InfiniteTapeExtender.extend(&mut syms, 1_000_000);
         Arc::new(syms)
     };
-    let unblemished_str: Arc<String> = Arc::new(
-        unblemished_syms
-            .iter()
-            .map(|s| format!("{}", s))
-            .collect(),
-    );
+    let unblemished_str: Arc<String> =
+        Arc::new(unblemished_syms.iter().map(|s| format!("{}", s)).collect());
 
     // Pre-compute UTM metadata for client-side decoding
     let utm = &*UTM_SPEC;
-    let utm_states: Arc<Vec<String>> = Arc::new(
-        utm.iter_states().map(|s| format!("{:?}", s)).collect(),
-    );
-    let utm_symbol_chars: Arc<String> = Arc::new(
-        utm.iter_symbols().map(|s| format!("{}", s)).collect(),
-    );
+    let utm_states: Arc<Vec<String>> =
+        Arc::new(utm.iter_states().map(|s| format!("{:?}", s)).collect());
+    let utm_symbol_chars: Arc<String> =
+        Arc::new(utm.iter_symbols().map(|s| format!("{}", s)).collect());
 
     let latest: Arc<Mutex<Option<Arc<Snapshot>>>> = Arc::new(Mutex::new(None));
     let sse_clients: SseClients = Arc::new(Mutex::new(Vec::new()));
