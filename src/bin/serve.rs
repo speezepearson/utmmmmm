@@ -234,9 +234,8 @@ fn sim_thread(
                     last_savepoint_step = total_steps;
                 }
             }
-        }
 
-        if total_steps % 100_000 == 0 && last_snapshot.elapsed() >= snapshot_interval {
+        if last_snapshot.elapsed() >= snapshot_interval {
             let snap_start = Instant::now();
             let decompiled = compiled.decompile(&tm);
             let wall_secs = start_time.elapsed().as_secs_f64().max(0.001);
@@ -261,6 +260,8 @@ fn sim_thread(
             snapshot_time_accum = Duration::ZERO;
             last_profile_print = Instant::now();
         }
+        }
+
     }
 }
 
