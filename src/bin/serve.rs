@@ -267,12 +267,13 @@ fn sim_thread(
             }
 
             if last_profile_print.elapsed() >= Duration::from_secs(10) {
-                let elapsed = last_profile_print.elapsed();
+                let total_overhead_ms = total_overhead.as_secs_f64() * 1000.0;
+                let total_runtime_ms = start_time.elapsed().as_secs_f64() * 1000.0;
                 eprintln!(
-                    "[profile] snapshot block: {:.1}ms / {:.1}s ({:.2}%)",
-                    total_overhead.as_secs_f64() * 1000.0,
-                    elapsed.as_secs_f64(),
-                    total_overhead.as_secs_f64() / elapsed.as_secs_f64() * 100.0,
+                    "[profile] overhead: {:.1}ms / {:.1}s ({:.2}%)",
+                    total_overhead_ms,
+                    total_runtime_ms,
+                    total_overhead_ms / total_runtime_ms * 100.0,
                 );
                 last_profile_print = Instant::now();
             }
