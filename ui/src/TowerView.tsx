@@ -134,11 +134,11 @@ function useSseTower(): {
             const realizedLength =
               1 +
               Math.max(
-                towerRef.current?.[depth]?.tape.length ?? 0,
-                level.head_pos,
+                level.max_head_pos,
                 ...Object.keys(level.overwrites).map(Number),
               );
             if (res.tape.length < realizedLength) {
+              // console.log("tape.length < realizedLength", res.tape.length, realizedLength);
               res.tape.push(
                 ...unblemishedRef.current.slice(
                   res.tape.length,
@@ -198,7 +198,7 @@ function TowerLevelView({ level, name }: { level: TowerLevel; name: string }) {
         dangerouslySetInnerHTML={{
           __html:
             colorizeTape(
-              level.tape.slice(0, level.maxHeadPos + 100),
+              level.tape,
               level.headPos,
             ) + " and so on",
         }}
