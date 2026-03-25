@@ -1,6 +1,10 @@
 import { z } from "zod";
 import { useEffect, useRef, useState } from "react";
-import {  type UtmMeta } from "./tower";
+
+export interface UtmMeta {
+  utmStates: string[];
+  utmSymbolChars: string;
+}
 
 const GREEN_SYMS = new Set(["*", "X", "Y", "^", ">"]);
 
