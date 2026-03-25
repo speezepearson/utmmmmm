@@ -1,34 +1,64 @@
+use std::collections::HashMap;
 use std::io::Write as IoWrite;
 
 use serde::{Deserialize, Serialize};
 
 use crate::compiled::CompiledTuringMachineSpec;
 use crate::compiled::{CState, CSymbol};
-use crate::tm::RunningTuringMachine;
+use crate::delta::current_overwrites;
+use crate::infinity::InfiniteTapeExtender;
+use crate::tm::{RunningTuringMachine, TapeExtender as _};
 use crate::tm::SimpleTuringMachineSpec;
+use crate::tower::{CompiledUtmSpec, Tower, TowerLevel};
+use crate::utm::{State, Symbol, UTM_SPEC};
 
 #[derive(Serialize, Deserialize)]
-pub struct SavepointData {
-    pub total_steps: u64,
-    pub state: u8,
-    pub pos: u64,
-    pub tape: Vec<u8>,
+pub struct Snapshot {
+    pub levels: Vec<TowerLevelJson>,
 }
 
-pub fn save_savepoint<S: Copy + std::fmt::Debug, Y: Copy + std::fmt::Debug>(
+#[derive(Serialize, Deserialize, Clone)]
+pub struct TowerLevelJson {
+    pub steps: u64,
+    pub head_pos: usize,
+    pub state: State,
+    pub overwrites: HashMap<usize, Symbol>,
+}
+
+pub fn build_snapshot<'a>(
+    tower: &'_ Tower<'a>,
+    inf_extender: &mut InfiniteTapeExtender,
+    reference: &mut Vec<Symbol>,
+) -> Snapshot {
+    let decompiled = tower.base.tm.spec.decompile(&tower.base.tm);
+    inf_extender.extend(reference, decompiled.tape.len());
+    let it = std::iter::once(TowerLevel {
+        total_steps: tower.base.total_steps,
+        tm: tower.base.tm.spec.decompile(&tower.base.tm),
+    })
+    .chain(tower.decoded.iter().map(|l| l.clone()));
+    Snapshot {
+        levels: it
+            .map(|l| TowerLevelJson {
+                steps: l.total_steps,
+                head_pos: l.tm.pos,
+                state: l.tm.state,
+                overwrites: current_overwrites(&l.tm.tape, &reference)
+                    .iter()
+                    .map(|(&i, &s)| (i, s))
+                    .collect::<HashMap<_, _>>(),
+            })
+            .collect(),
+    }
+}
+
+pub fn save_savepoint(
     path: &str,
-    total_steps: u64,
-    tm: &RunningTuringMachine<CompiledTuringMachineSpec<SimpleTuringMachineSpec<S, Y>>>,
-) where
-    S: std::hash::Hash + Eq,
-    Y: std::hash::Hash + Eq + std::fmt::Display,
+    tower: &Tower<'_>,
+    reference: &mut Vec<Symbol>,
+)
 {
-    let data = SavepointData {
-        total_steps,
-        state: tm.state.0,
-        pos: tm.pos as u64,
-        tape: tm.tape.iter().map(|s| s.0).collect(),
-    };
+    let data = build_snapshot(tower, &mut InfiniteTapeExtender, reference);
     let tmp = format!("{}.tmp", path);
     let json = serde_json::to_string(&data).expect("serialize savepoint");
     let mut f = std::io::BufWriter::new(std::fs::File::create(&tmp).expect("create savepoint"));
@@ -38,36 +68,42 @@ pub fn save_savepoint<S: Copy + std::fmt::Debug, Y: Copy + std::fmt::Debug>(
     eprintln!(
         "[{:?}] Saved savepoint at step {} to {}",
         std::time::Instant::now(),
-        total_steps,
+        tower.base.total_steps,
         path
     );
 }
 
-pub fn load_savepoint(path: &str) -> Option<(u64, CState, usize, Vec<CSymbol>)> {
+pub fn load_savepoint<'a>(path: &str, spec: &'a CompiledUtmSpec<'a>) -> Option<Tower<'a>> {
     let data = std::fs::read(path).ok()?;
-    let sp: SavepointData = serde_json::from_slice(&data).ok()?;
-    let tape: Vec<CSymbol> = sp.tape.iter().map(|&b| CSymbol(b)).collect();
-    Some((sp.total_steps, CState(sp.state), sp.pos as usize, tape))
-}
+    let snapshot: Snapshot = serde_json::from_slice(&data).ok()?;
+    let (snap_base, snap_decoded) = snapshot.levels.split_first().expect("savepoint should have at least one level");
 
-/// Load a savepoint from the old binary format.
-pub fn load_binary_savepoint(path: &str) -> Option<SavepointData> {
-    let data = std::fs::read(path).ok()?;
-    if data.len() < 33 {
-        return None;
+    let mut tower = Tower::new(RunningTuringMachine::new(spec));
+
+    tower.base.total_steps = snap_base.steps;
+    tower.base.tm.state = spec.compile_state(snap_base.state);
+    let mut tape = Vec::new();
+    for (pos, sym) in snap_base.overwrites.iter() {
+        InfiniteTapeExtender.extend(&mut tape, pos + 1);
+        tape[*pos] = *sym;
     }
-    let total_steps = u64::from_le_bytes(data[0..8].try_into().unwrap());
-    let state = data[16];
-    let pos = u64::from_le_bytes(data[17..25].try_into().unwrap());
-    let tape_len = u64::from_le_bytes(data[25..33].try_into().unwrap()) as usize;
-    if data.len() < 33 + tape_len {
-        return None;
-    }
-    let tape = data[33..33 + tape_len].to_vec();
-    Some(SavepointData {
-        total_steps,
-        state,
-        pos,
-        tape,
-    })
+    tower.base.tm.tape = tape.iter().map(|&s| spec.compile_symbol(s)).collect();
+
+    tower.decoded = snap_decoded.iter().map(|l| {
+        let mut tape = Vec::new();
+        for (pos, sym) in l.overwrites.iter() {
+            InfiniteTapeExtender.extend(&mut tape, pos + 1);
+            tape[*pos] = *sym;
+        }
+        TowerLevel {
+            total_steps: l.steps,
+            tm: RunningTuringMachine {
+                spec: &*UTM_SPEC,
+                pos: l.head_pos,
+                state: l.state,
+                tape,
+            },
+        }
+    }).collect();
+    Some(tower)
 }

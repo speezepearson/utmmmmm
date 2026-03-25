@@ -8,10 +8,12 @@ use std::{
     sync::LazyLock,
 };
 
+use serde::Serialize;
+
 use crate::tm::{Dir, RunningTuringMachine, SimpleTuringMachineSpec, TuringMachineSpec};
 
 // ── Newtype wrappers for type safety ──
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum State {
     Accept,
     AcceptSeekHome,
@@ -368,32 +370,64 @@ pub enum Symbol {
     Gt,
     Dollar,
 }
+
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "{}",
-            match self {
-                Symbol::Blank => "_",
-                Symbol::Zero => "0",
-                Symbol::One => "1",
-                Symbol::X => "X",
-                Symbol::Y => "Y",
-                Symbol::Hash => "#",
-                Symbol::Pipe => "|",
-                Symbol::Semi => ";",
-                Symbol::Comma => ",",
-                Symbol::Caret => "^",
-                Symbol::L => "L",
-                Symbol::R => "R",
-                Symbol::Dot => ".",
-                Symbol::Star => "*",
-                Symbol::Gt => ">",
-                Symbol::Dollar => "$",
-            }
-        )
+        write!(f, "{}", match self {
+            Symbol::Blank => "_",
+            Symbol::Zero => "0",
+            Symbol::One => "1",
+            Symbol::X => "X",
+            Symbol::Y => "Y",
+            Symbol::Hash => "#",
+            Symbol::Pipe => "|",
+            Symbol::Semi => ";",
+            Symbol::Comma => ",",
+            Symbol::Caret => "^",
+            Symbol::L => "L",
+            Symbol::R => "R",
+            Symbol::Dot => ".",
+            Symbol::Star => "*",
+            Symbol::Gt => ">",
+            Symbol::Dollar => "$",
+        })
     }
 }
+
+impl serde::Serialize for Symbol {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+        where
+            S: serde::Serializer {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+impl<'de> serde::Deserialize<'de> for Symbol {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+        where
+            D: serde::Deserializer<'de> {
+        let s = String::deserialize(deserializer)?;
+        Ok(match s.as_str() {
+            "_" => Symbol::Blank,
+            "0" => Symbol::Zero,
+            "1" => Symbol::One,
+            "X" => Symbol::X,
+            "Y" => Symbol::Y,
+            "#" => Symbol::Hash,
+            "|" => Symbol::Pipe,
+            ";" => Symbol::Semi,
+            "," => Symbol::Comma,
+            "^" => Symbol::Caret,
+            "L" => Symbol::L,
+            "R" => Symbol::R,
+            "." => Symbol::Dot,
+            "*" => Symbol::Star,
+            ">" => Symbol::Gt,
+            "$" => Symbol::Dollar,
+            _ => return Err(serde::de::Error::custom(format!("invalid utm symbol: {}", s))),
+        })
+    }}
+
+
 const ALL_SYMBOLS: [Symbol; 16] = [
     Symbol::Blank,
     Symbol::Zero,
@@ -1714,17 +1748,6 @@ pub static UTM_SPEC: LazyLock<SimpleTuringMachineSpec<State, Symbol>> = LazyLock
     //     symbol_names: SYMBOL_NAMES.to_vec(),
     // }
 });
-
-// ════════════════════════════════════════════════════════════════════
-// Tape formatting for debugging
-// ════════════════════════════════════════════════════════════════════
-
-pub fn format_tape(tape: &[Symbol]) -> String {
-    tape.iter()
-        .map(|s| s.to_string())
-        .collect::<Vec<_>>()
-        .join("")
-}
 
 pub fn encode_tape<GuestSymbol: PartialEq + Eq + Hash>(
     guest_sym_to_idx: &HashMap<GuestSymbol, usize>,

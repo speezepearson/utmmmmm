@@ -3,6 +3,7 @@ use std::fmt::Write;
 use std::sync::Arc;
 use std::sync::LazyLock;
 
+use serde::Deserialize;
 use serde::Serialize;
 
 use crate::compiled::CompiledTapeExtender;
@@ -97,41 +98,4 @@ fn decode_into_level<'a>(tm: &UtmTm<'a>, dst: &mut UtmTowerLevel<'a>) -> bool {
     }
 
     return false;
-}
-
-#[derive(Serialize)]
-pub struct TowerLevelJson {
-    pub tape: String,
-    pub head_pos: usize,
-    pub state: String,
-    pub tape_len: usize,
-}
-
-#[derive(Serialize)]
-pub struct TowerJson {
-    pub steps: u64,
-    pub steps_per_sec: f64,
-    pub tower: Vec<TowerLevelJson>,
-}
-
-fn tape_string(tm: &UtmTm, end: usize) -> String {
-    let mut out = String::new();
-    let blank = tm.spec.blank();
-    for i in 0..end {
-        let sym = if i < tm.tape.len() { tm.tape[i] } else { blank };
-        write!(out, "{}", sym).unwrap();
-    }
-    if end < tm.tape.len() {
-        out.push_str(" ...");
-    }
-    out
-}
-
-fn level_to_json(tm: &UtmTm, end: usize) -> TowerLevelJson {
-    TowerLevelJson {
-        tape: tape_string(tm, end),
-        head_pos: tm.pos,
-        state: format!("{:?}", tm.state),
-        tape_len: tm.tape.len(),
-    }
 }

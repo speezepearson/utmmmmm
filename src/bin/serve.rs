@@ -11,7 +11,7 @@ use tiny_http::{Header, Response, Server};
 use utmmmmm::compiled::{CState, CompiledTapeExtender, CompiledTuringMachineSpec};
 use utmmmmm::delta::{compute_new_overwrites, current_overwrites, ClientLevelState};
 use utmmmmm::infinity::InfiniteTapeExtender;
-use utmmmmm::savepoint::{load_savepoint, save_savepoint};
+use utmmmmm::savepoint::{Snapshot, TowerLevelJson, build_snapshot, load_savepoint, save_savepoint};
 use utmmmmm::tm::{
     Dir, RunningTMStatus, RunningTuringMachine, SimpleTuringMachineSpec, TapeExtender,
     TuringMachineSpec,
@@ -21,22 +21,10 @@ use utmmmmm::utm::{State, Symbol, UTM_SPEC};
 
 // ── Snapshot: shared between tower thread and SSE client threads ──
 
-struct Snapshot {
-    levels: Vec<TowerLevelJson>,
-}
-
 type SseClient = mpsc::Sender<Arc<Snapshot>>;
 type SseClients = Arc<Mutex<Vec<SseClient>>>;
 
 // ── JSON event types ──
-
-#[derive(Serialize, Clone)]
-struct TowerLevelJson {
-    steps: u64,
-    head_pos: usize,
-    state: String,
-    overwrites: HashMap<usize, char>,
-}
 
 #[derive(Serialize)]
 struct TotalEventJson {
@@ -54,35 +42,6 @@ struct DeltaEventJson {
     #[serde(rename = "type")]
     event_type: &'static str,
     levels: Vec<TowerLevelJson>,
-}
-
-// ── Build snapshot from decompiled L0 machine ──
-
-fn build_snapshot<'a>(
-    tower: &'_ Tower<'a>,
-    inf_extender: &mut InfiniteTapeExtender,
-    reference: &mut Vec<Symbol>,
-) -> Snapshot {
-    let decompiled = tower.base.tm.spec.decompile(&tower.base.tm);
-    inf_extender.extend(reference, decompiled.tape.len());
-    let it = std::iter::once(TowerLevel {
-        total_steps: tower.base.total_steps,
-        tm: tower.base.tm.spec.decompile(&tower.base.tm),
-    })
-    .chain(tower.decoded.iter().map(|l| l.clone()));
-    Snapshot {
-        levels: it
-            .map(|l| TowerLevelJson {
-                steps: l.total_steps,
-                head_pos: l.tm.pos,
-                state: format!("{:?}", l.tm.state),
-                overwrites: current_overwrites(&l.tm.tape, &reference)
-                    .iter()
-                    .map(|(&i, s)| (i, s.to_string().chars().next().unwrap()))
-                    .collect::<HashMap<_, _>>(),
-            })
-            .collect(),
-    }
 }
 
 fn publish(
@@ -108,12 +67,11 @@ fn sim_thread(
     let mut extender = CompiledTapeExtender::new(&compiled, Box::new(InfiniteTapeExtender));
 
     let mut tower = Tower::new(RunningTuringMachine::new(&compiled));
-    // if tower.base.tm.pos >= tower.base.tm.tape.len() {
-    //     extender.extend(&mut tower.base.tm.tape, 10);
-    // }
 
-    if let Some(ref _sp_path) = savepoint_path {
-        todo!();
+    if let Some(ref sp_path) = savepoint_path {
+        if let Some(t) = load_savepoint(sp_path, &compiled) {
+            tower = t;
+        }
     }
 
     let mut base_max_pos: usize = tower.base.tm.pos;
@@ -156,7 +114,7 @@ fn sim_thread(
             let overhead_start_at = Instant::now();
             if total_steps - last_savepoint_step >= 1_000_000_000 {
                 if let Some(ref sp_path) = savepoint_path {
-                    save_savepoint(sp_path, total_steps, &tower.base.tm);
+                    save_savepoint(sp_path, &tower, &mut reference);
                     last_savepoint_step = total_steps;
                 }
             }
@@ -244,10 +202,7 @@ fn sse_client_thread(
                     let new_overwrites = compute_new_overwrites(
                         &level.overwrites,
                         &mut client_state.overwrites[i],
-                        &unblemished_syms
-                            .iter()
-                            .map(|s| s.to_string().chars().next().unwrap())
-                            .collect::<Vec<_>>(),
+                        &unblemished_syms,
                     );
 
                     TowerLevelJson {
@@ -256,7 +211,7 @@ fn sse_client_thread(
                         head_pos: level.head_pos,
                         overwrites: new_overwrites
                             .into_iter()
-                            .map(|(pos, s)| (pos, s.to_string().chars().next().unwrap()))
+                            .map(|(pos, s)| (pos, s))
                             .collect::<HashMap<_, _>>(),
                     }
                 })

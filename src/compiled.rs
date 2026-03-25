@@ -139,6 +139,17 @@ impl<'a, Guest: TuringMachineSpec> CompiledTuringMachineSpec<'a, Guest> {
                 .expect("every state should be in the compiled state list") as u8,
         )
     }
+    pub fn compile_symbol(&self, symbol: Guest::Symbol) -> CSymbol {
+        CSymbol(
+            self.original_symbols
+                .iter()
+                .position(|&s| s == symbol)
+                .expect("every symbol should be in the compiled symbol list") as u8,
+        )
+    }
+    pub fn decompile_symbol(&self, symbol: CSymbol) -> Guest::Symbol {
+        self.original_symbols[symbol.0 as usize]
+    }
     pub fn decompile_state(&self, state: CState) -> Guest::State {
         self.original_states[state.0 as usize]
     }

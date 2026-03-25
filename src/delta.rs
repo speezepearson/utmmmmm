@@ -45,11 +45,11 @@ pub fn current_overwrites<Sym: Copy + Eq + Hash>(
 /// Diff the current overwrites against a client's known state.
 /// Returns the (position, display_string) pairs the client needs to apply,
 /// and updates `client` to match `current`.
-pub fn compute_new_overwrites<Sym: Copy + Eq + Hash + Display>(
+pub fn compute_new_overwrites<Sym: Copy + Eq + Hash>(
     current: &HashMap<usize, Sym>,
     client: &mut HashMap<usize, Sym>,
     reference: &[Sym],
-) -> Vec<(usize, String)> {
+) -> Vec<(usize, Sym)> {
     let mut new_overwrites = Vec::new();
 
     // Positions in current that differ from what client knows
@@ -57,9 +57,7 @@ pub fn compute_new_overwrites<Sym: Copy + Eq + Hash + Display>(
         match client.get(&pos) {
             Some(&known) if known == sym => {} // unchanged
             _ => {
-                let mut s = String::new();
-                write!(s, "{}", sym).unwrap();
-                new_overwrites.push((pos, s));
+                new_overwrites.push((pos, sym));
             }
         }
     }
@@ -68,9 +66,7 @@ pub fn compute_new_overwrites<Sym: Copy + Eq + Hash + Display>(
     for (&pos, _) in client.iter() {
         if !current.contains_key(&pos) {
             let sym = reference[pos];
-            let mut s = String::new();
-            write!(s, "{}", sym).unwrap();
-            new_overwrites.push((pos, s));
+            new_overwrites.push((pos, sym));
         }
     }
 
