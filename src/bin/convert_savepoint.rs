@@ -23,11 +23,10 @@ fn main() {
             std::process::exit(1);
         });
         eprintln!(
-            "Converted {} -> {} (step {}, {} guest steps, tape len {})",
+            "Converted {} -> {} (step {}, tape len {})",
             input_path,
             output_path,
             data.total_steps,
-            data.guest_steps,
             data.tape.len()
         );
     } else {

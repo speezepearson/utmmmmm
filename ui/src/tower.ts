@@ -9,7 +9,6 @@ export interface TowerLevel {
   state: string;
   headPos: number;
   tape: string;
-  tapeLen: number;
 }
 
 interface DecodedLevel {
@@ -124,7 +123,6 @@ export function buildTower(l0: TowerLevel, meta: UtmMeta): TowerLevel[] {
       state: decoded.state,
       headPos: decoded.headPos,
       tape: decoded.tape,
-      tapeLen: decoded.tape.length,
     });
     currentTape = decoded.tape;
   }
@@ -166,7 +164,6 @@ export function updateTower(
       state: decoded.state,
       headPos: decoded.headPos,
       tape: decoded.tape,
-      tapeLen: decoded.tape.length,
     };
 
     if (decoded.state === oldState && tower.length > depth + 2) {

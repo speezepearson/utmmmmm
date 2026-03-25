@@ -1,3 +1,4 @@
+import { z } from "zod";
 import { useEffect, useRef, useState } from "react";
 import { updateTower, type TowerLevel, type UtmMeta } from "./tower";
 
@@ -24,105 +25,116 @@ function colorizeTape(tape: string, headPos: number): string {
 
 interface L0State {
   steps: number;
-  guestSteps: number;
-  stepsPerSec: number;
   state: string;
   headPos: number;
-  maxHeadPos: number;
   tape: string;
-  tapeLen: number;
 }
 
-// ── Main component ──
+const TotalEvent = z.object({
+  type: z.literal("total"),
+  steps: z.number(),
+  unblemished: z.string(),
+  utm_states: z.array(z.string()),
+  utm_symbol_chars: z.string(),
+  state: z.string(),
+  head_pos: z.number(),
+  overwrites: z.record(z.number(), z.string()),
+});
+type TotalEvent = z.infer<typeof TotalEvent>;
+const DeltaEvent = z.object({
+  type: z.literal("delta"),
+  total_steps: z.number(),
+  state: z.string(),
+  head_pos: z.number(),
+  new_overwrites: z.record(z.number(), z.string()),
+});
+type DeltaEvent = z.infer<typeof DeltaEvent>;
+const SseEvent = z.union([TotalEvent, DeltaEvent]);
 
-export function TowerView() {
-  const [l0, setL0] = useState<L0State | null>(null);
-  const metaRef = useRef<UtmMeta | null>(null);
-  const tapeRef = useRef<string>("");
+function useSseL0(): { meta: UtmMeta | null; l0: L0State | null } {
   const unblemishedRef = useRef<string>("");
-  const towerRef = useRef<TowerLevel[]>([]);
-  const [tower, setTower] = useState<TowerLevel[] | null>(null);
+  const [meta, setMeta] = useState<UtmMeta | null>(null);
+
+  const l0Ref = useRef<L0State | null>(null);
+  const [exposedL0, setExposedL0] = useState<L0State | null>(null);
 
   useEffect(() => {
     const es = new EventSource("/api/tower");
     es.onmessage = (event) => {
-      const msg = JSON.parse(event.data);
+      const msg = SseEvent.parse(JSON.parse(event.data));
 
-      if (msg.type === "total") {
-        unblemishedRef.current = msg.unblemished;
-        tapeRef.current = msg.tape;
-
-        if (msg.utm_states && msg.utm_symbol_chars) {
-          metaRef.current = {
+      switch (msg.type) {
+        case "total": {
+          unblemishedRef.current = msg.unblemished;
+          setMeta({
             utmStates: msg.utm_states,
             utmSymbolChars: msg.utm_symbol_chars,
+          });
+          l0Ref.current = {
+            steps: msg.steps,
+            state: msg.state,
+            headPos: msg.head_pos,
+            tape: Array.from(
+              {
+                length: Math.max(
+                  msg.head_pos,
+                  ...Object.keys(msg.overwrites).map(Number),
+                ),
+              },
+              (_, i) => msg.overwrites[i] ?? unblemishedRef.current[i] ?? "_",
+            ).join(""),
           };
+          setExposedL0(l0Ref.current);
+          break;
         }
-
-        const newL0: L0State = {
-          steps: msg.steps,
-          guestSteps: msg.guest_steps,
-          stepsPerSec: msg.steps_per_sec,
-          state: msg.state,
-          headPos: msg.head_pos,
-          maxHeadPos: msg.max_head_pos,
-          tape: msg.tape,
-          tapeLen: msg.tape_len,
-        };
-        setL0(newL0);
-
-        if (metaRef.current) {
-          const newL0Level: TowerLevel = {
-            state: newL0.state,
-            headPos: newL0.headPos,
-            tape: newL0.tape,
-            tapeLen: newL0.tapeLen,
+        case "delta": {
+          l0Ref.current = {
+            steps: msg.total_steps,
+            state: msg.state,
+            headPos: msg.head_pos,
+            tape: Array.from(
+              {
+                length: Math.max(
+                  l0Ref.current?.tape.length ?? 0,
+                  msg.head_pos,
+                  ...Object.keys(msg.new_overwrites).map(Number),
+                ),
+              },
+              (_, i) =>
+                msg.new_overwrites[i] ??
+                l0Ref.current?.tape[i] ??
+                unblemishedRef.current[i] ??
+                "_",
+            ).join(""),
           };
-          // On total, reset tower
-          towerRef.current = [];
-          updateTower(newL0Level, towerRef.current, metaRef.current);
-          setTower([...towerRef.current]);
-        }
-      } else if (msg.type === "delta") {
-        const chars = tapeRef.current.split("");
-        const end = Math.max(msg.max_head_pos, msg.head_pos) + 10;
-        const ub = unblemishedRef.current;
-        while (chars.length < end) {
-          const pos = chars.length;
-          chars.push(pos < ub.length ? ub[pos] : "_");
-        }
-        for (const [pos, ch] of msg.new_overwrites as [number, string][]) {
-          while (chars.length <= pos) chars.push("_");
-          chars[pos] = ch;
-        }
-        tapeRef.current = chars.join("");
-
-        const newL0: L0State = {
-          steps: msg.total_steps,
-          guestSteps: msg.guest_steps,
-          stepsPerSec: msg.steps_per_sec,
-          state: msg.state,
-          headPos: msg.head_pos,
-          maxHeadPos: msg.max_head_pos,
-          tape: tapeRef.current,
-          tapeLen: msg.tape_len,
-        };
-        setL0(newL0);
-
-        if (metaRef.current) {
-          const newL0Level: TowerLevel = {
-            state: newL0.state,
-            headPos: newL0.headPos,
-            tape: newL0.tape,
-            tapeLen: newL0.tapeLen,
-          };
-          updateTower(newL0Level, towerRef.current, metaRef.current);
-          setTower([...towerRef.current]);
+          setExposedL0(l0Ref.current);
+          break;
         }
       }
     };
     return () => es.close();
   }, []);
+
+  return {
+    meta,
+    l0: exposedL0,
+  };
+}
+
+// ── Main component ──
+
+export function TowerView() {
+  const { meta, l0 } = useSseL0();
+  const towerRef = useRef<TowerLevel[]>([]);
+  const [tower, setTower] = useState<TowerLevel[] | null>(null);
+
+  useEffect(() => console.log({ l0 }), [l0]);
+  useEffect(() => console.log({ tower }), [tower]);
+
+  useEffect(() => {
+    if (l0 && meta) updateTower(l0, towerRef.current, meta);
+    setTower([...towerRef.current]);
+  }, [l0, meta]);
 
   if (!l0 || !tower) {
     return <div style={{ padding: "16px" }}>Loading...</div>;
@@ -132,29 +144,9 @@ export function TowerView() {
     <div style={{ textAlign: "left", padding: "16px" }}>
       <h2 style={{ marginBottom: "8px" }}>
         Tower &mdash; {l0.steps.toLocaleString()} steps
-        {l0.stepsPerSec > 0 && (
-          <span
-            style={{
-              fontWeight: "normal",
-              fontSize: "14px",
-              marginLeft: "12px",
-            }}
-          >
-            ({l0.stepsPerSec.toFixed(1)}M steps/s,{" "}
-            {l0.guestSteps.toLocaleString()} guest steps)
-          </span>
-        )}
       </h2>
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {tower.map((level, i) => {
-          // For L0, trim to maxHeadPos + 10; for decoded levels show full tape
-          const tape =
-            i === 0
-              ? level.tape.slice(
-                  0,
-                  Math.max(l0.maxHeadPos, l0.headPos) + 10,
-                )
-              : level.tape;
           return (
             <div
               key={i}
@@ -173,8 +165,7 @@ export function TowerView() {
                   marginBottom: "4px",
                 }}
               >
-                L{i} &middot; {level.state} &middot;{" "}
-                {level.tapeLen.toLocaleString()} symbols
+                L{i} &middot; {level.state}
               </div>
               <div
                 style={{
@@ -184,7 +175,7 @@ export function TowerView() {
                   overflowWrap: "break-word",
                 }}
                 dangerouslySetInnerHTML={{
-                  __html: colorizeTape(tape, level.headPos),
+                  __html: colorizeTape(level.tape, level.headPos),
                 }}
               />
             </div>

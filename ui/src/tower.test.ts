@@ -29,12 +29,8 @@ function makeL0Tape(opts: {
   return `$#${rules}#${accepting}#${opts.stateBits}#${blank}#${opts.tapeCells}`;
 }
 
-function makeLevel(
-  state: string,
-  headPos: number,
-  tape: string,
-): TowerLevel {
-  return { state, headPos, tape, tapeLen: tape.length };
+function makeLevel(state: string, headPos: number, tape: string): TowerLevel {
+  return { state, headPos, tape };
 }
 
 // ── Tests ──

@@ -31,13 +31,11 @@ fn main() {
     extender.extend(&mut tm.tape, 1);
 
     let mut total_steps: u64 = 0;
-    let mut guest_steps: u64 = 0;
 
     // Load savepoint if it exists
     if let Some(ref sp_path) = savepoint_path {
-        if let Some((sp_steps, sp_guest, sp_state, sp_pos, sp_tape)) = load_savepoint(sp_path) {
+        if let Some((sp_steps, sp_state, sp_pos, sp_tape)) = load_savepoint(sp_path) {
             total_steps = sp_steps;
-            guest_steps = sp_guest;
             tm.state = sp_state;
             tm.pos = sp_pos;
             tm.tape = sp_tape;
@@ -45,10 +43,9 @@ fn main() {
             let tape_len = tm.tape.len();
             extender.extend(&mut tm.tape, tape_len);
             eprintln!(
-                "Loaded savepoint from {}: step {}, {} guest steps, tape len {}",
+                "Loaded savepoint from {}: step {}, tape len {}",
                 sp_path,
                 total_steps,
-                guest_steps,
                 tm.tape.len()
             );
         }
@@ -118,11 +115,11 @@ fn main() {
                 "reject"
             };
             println!(
-                "halted ({}) in state {:?} after {} UTM steps ({} guest steps)",
-                status, tower[0].machine.state, total_steps, guest_steps
+                "halted ({}) in state {:?} after {} UTM steps",
+                status, tower[0].machine.state, total_steps
             );
             if let Some(ref sp_path) = savepoint_path {
-                save_savepoint(sp_path, total_steps, guest_steps, &tm);
+                save_savepoint(sp_path, total_steps, &tm);
             }
             return;
         }
@@ -130,7 +127,6 @@ fn main() {
         // Detect Init entry
         if tm.state != prev_cstate {
             if tm.state == init_cstate {
-                guest_steps += 1;
                 tower[0].update_machine(compiled.decompile(&tm));
                 tower[0].max_head_pos = base_max_pos;
                 update_tower(utm, &mut tower, &mut inf_extender);
@@ -143,7 +139,7 @@ fn main() {
             // Savepoint every 1B steps
             if let Some(ref sp_path) = savepoint_path {
                 if total_steps - last_savepoint_step >= 1_000_000_000 {
-                    save_savepoint(sp_path, total_steps, guest_steps, &tm);
+                    save_savepoint(sp_path, total_steps, &tm);
                     last_savepoint_step = total_steps;
                 }
             }
@@ -154,14 +150,13 @@ fn main() {
                 tower[0].max_head_pos = base_max_pos;
                 let wall_secs = start_time.elapsed().as_secs_f64().max(0.001);
                 eprint!(
-                    "{}  ({} guest steps, {:.1}M steps/s)\n",
+                    "{}  ({:.1}M steps/s)\n",
                     colorize_ansi(&format_tower(
                         &mut tower,
                         total_steps,
                         utm,
                         &mut inf_extender
                     )),
-                    guest_steps,
                     total_steps as f64 / wall_secs / 1_000_000.0
                 );
                 last_print = std::time::Instant::now();

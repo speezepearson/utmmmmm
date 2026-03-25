@@ -55,7 +55,6 @@ pub struct TowerLevelJson {
 #[derive(Serialize)]
 pub struct TowerJson {
     pub steps: u64,
-    pub guest_steps: u64,
     pub steps_per_sec: f64,
     pub tower: Vec<TowerLevelJson>,
 }
@@ -79,33 +78,6 @@ fn level_to_json(tm: &UtmTm, end: usize) -> TowerLevelJson {
         head_pos: tm.pos,
         state: format!("{:?}", tm.state),
         tape_len: tm.tape.len(),
-    }
-}
-
-pub fn tower_to_json<'a>(
-    tower: &mut [TowerLevel<'a>],
-    total_steps: u64,
-    guest_steps: u64,
-    steps_per_sec: f64,
-    utm: &'a SimpleTuringMachineSpec<State, Symbol>,
-    extender: &mut InfiniteTapeExtender,
-) -> TowerJson {
-    let mut levels: Vec<TowerLevelJson> = tower
-        .iter()
-        .map(|tl| level_to_json(&tl.machine, tl.max_head_pos + 10))
-        .collect();
-
-    // Decode and include one more level beyond the tower.
-    let last = tower.last_mut().unwrap();
-    if let Some(extra) = decode_next_level(utm, &mut last.machine, extender) {
-        levels.push(level_to_json(&extra, extra.pos + 10));
-    }
-
-    TowerJson {
-        steps: total_steps,
-        guest_steps,
-        steps_per_sec,
-        tower: levels,
     }
 }
 

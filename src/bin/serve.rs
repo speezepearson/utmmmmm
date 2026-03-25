@@ -21,12 +21,8 @@ use utmmmmm::utm::{State, Symbol, UTM_SPEC};
 
 struct Snapshot {
     total_steps: u64,
-    guest_steps: u64,
-    steps_per_sec: f64,
     head_pos: usize,
-    max_head_pos: usize,
     state: String,
-    tape_len: usize,
     overwrites: HashMap<usize, Symbol>,
 }
 
@@ -40,16 +36,12 @@ struct TotalEventJson {
     #[serde(rename = "type")]
     event_type: &'static str,
     steps: u64,
-    guest_steps: u64,
-    steps_per_sec: f64,
     unblemished: String,
     utm_states: Vec<String>,
     utm_symbol_chars: String,
     state: String,
     head_pos: usize,
-    max_head_pos: usize,
-    tape: String,
-    tape_len: usize,
+    overwrites: HashMap<usize, char>,
 }
 
 #[derive(Serialize)]
@@ -57,13 +49,9 @@ struct DeltaEventJson {
     #[serde(rename = "type")]
     event_type: &'static str,
     total_steps: u64,
-    guest_steps: u64,
-    steps_per_sec: f64,
     state: String,
     head_pos: usize,
-    max_head_pos: usize,
-    new_overwrites: Vec<(usize, String)>,
-    tape_len: usize,
+    new_overwrites: HashMap<usize, char>,
 }
 
 // ── Tape reconstruction (for total event) ──
@@ -93,22 +81,15 @@ fn reconstruct_tape(
 
 fn build_snapshot(
     decompiled: &RunningTuringMachine<SimpleTuringMachineSpec<State, Symbol>>,
-    max_head_pos: usize,
     total_steps: u64,
-    guest_steps: u64,
-    steps_per_sec: f64,
     inf_extender: &mut InfiniteTapeExtender,
     reference: &mut Vec<Symbol>,
 ) -> Snapshot {
     inf_extender.extend(reference, decompiled.tape.len());
     Snapshot {
         total_steps,
-        guest_steps,
-        steps_per_sec,
         head_pos: decompiled.pos,
-        max_head_pos,
         state: format!("{:?}", decompiled.state),
-        tape_len: decompiled.tape.len(),
         overwrites: current_overwrites(&decompiled.tape, reference),
     }
 }
@@ -145,22 +126,19 @@ fn sim_thread(
     extender.extend(&mut tm.tape, 1);
 
     let mut total_steps: u64 = 0;
-    let mut guest_steps: u64 = 0;
 
     if let Some(ref sp_path) = savepoint_path {
-        if let Some((sp_steps, sp_guest, sp_state, sp_pos, sp_tape)) = load_savepoint(sp_path) {
+        if let Some((sp_steps, sp_state, sp_pos, sp_tape)) = load_savepoint(sp_path) {
             total_steps = sp_steps;
-            guest_steps = sp_guest;
             tm.state = sp_state;
             tm.pos = sp_pos;
             tm.tape = sp_tape;
             let tape_len = tm.tape.len();
             extender.extend(&mut tm.tape, tape_len);
             eprintln!(
-                "Loaded savepoint from {}: step {}, {} guest steps, tape len {}",
+                "Loaded savepoint from {}: step {}, tape len {}",
                 sp_path,
                 total_steps,
-                guest_steps,
                 tm.tape.len()
             );
         }
@@ -187,10 +165,7 @@ fn sim_thread(
         let decompiled = compiled.decompile(&tm);
         let snap = Arc::new(build_snapshot(
             &decompiled,
-            base_max_pos,
             total_steps,
-            guest_steps,
-            0.0,
             &mut inf_extender,
             &mut reference,
         ));
@@ -219,24 +194,18 @@ fn sim_thread(
             let decompiled = compiled.decompile(&tm);
             let snap = Arc::new(build_snapshot(
                 &decompiled,
-                base_max_pos,
                 total_steps,
-                guest_steps,
-                0.0,
                 &mut inf_extender,
                 &mut reference,
             ));
             publish(&latest, &sse_clients, snap);
             if let Some(ref sp_path) = savepoint_path {
-                save_savepoint(sp_path, total_steps, guest_steps, &tm);
+                save_savepoint(sp_path, total_steps, &tm);
             }
             return;
         }
 
         if tm.state != prev_cstate {
-            if tm.state == init_cstate {
-                guest_steps += 1;
-            }
             prev_cstate = tm.state;
         }
 
@@ -244,21 +213,16 @@ fn sim_thread(
             let overhead_start_at = Instant::now();
             if let Some(ref sp_path) = savepoint_path {
                 if total_steps - last_savepoint_step >= 1_000_000_000 {
-                    save_savepoint(sp_path, total_steps, guest_steps, &tm);
+                    save_savepoint(sp_path, total_steps, &tm);
                     last_savepoint_step = total_steps;
                 }
             }
 
             if last_snapshot.elapsed() >= snapshot_interval {
                 let decompiled = compiled.decompile(&tm);
-                let wall_secs = start_time.elapsed().as_secs_f64().max(0.001);
-                let steps_per_sec = total_steps as f64 / wall_secs / 1_000_000.0;
                 let snap = Arc::new(build_snapshot(
                     &decompiled,
-                    base_max_pos,
                     total_steps,
-                    guest_steps,
-                    steps_per_sec,
                     &mut inf_extender,
                     &mut reference,
                 ));
@@ -307,20 +271,15 @@ fn sse_client_thread(
     };
 
     // Send total event
-    let tape_end = initial.max_head_pos + 10;
     let total = TotalEventJson {
         event_type: "total",
         steps: initial.total_steps,
-        guest_steps: initial.guest_steps,
-        steps_per_sec: initial.steps_per_sec,
         unblemished: (*unblemished_str).clone(),
         utm_states: (*utm_states).clone(),
         utm_symbol_chars: (*utm_symbol_chars).clone(),
         state: initial.state.clone(),
         head_pos: initial.head_pos,
-        max_head_pos: initial.max_head_pos,
-        tape: reconstruct_tape(&unblemished_str, &initial.overwrites, tape_end),
-        tape_len: initial.tape_len,
+        overwrites: HashMap::new(), // TODO
     };
     let json = serde_json::to_string(&total).unwrap();
     if write!(writer, "data: {}\n\n", json).is_err() || writer.flush().is_err() {
@@ -339,13 +298,9 @@ fn sse_client_thread(
         let delta = DeltaEventJson {
             event_type: "delta",
             total_steps: snapshot.total_steps,
-            guest_steps: snapshot.guest_steps,
-            steps_per_sec: snapshot.steps_per_sec,
             state: snapshot.state.clone(),
             head_pos: snapshot.head_pos,
-            max_head_pos: snapshot.max_head_pos,
-            new_overwrites,
-            tape_len: snapshot.tape_len,
+            new_overwrites: new_overwrites.into_iter().map(|(pos, s)| (pos, s.chars().next().unwrap())).collect(),
         };
         let json = serde_json::to_string(&delta).unwrap();
         if write!(writer, "data: {}\n\n", json).is_err() || writer.flush().is_err() {
