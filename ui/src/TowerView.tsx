@@ -47,10 +47,14 @@ const TotalEvent = z.object({
 type TotalEvent = z.infer<typeof TotalEvent>;
 const DeltaEvent = z.object({
   type: z.literal("delta"),
-  total_steps: z.number(),
-  state: z.string(),
-  head_pos: z.number(),
-  new_overwrites: z.record(z.number(), z.string()),
+  levels: z.array(
+    z.object({
+      steps: z.number(),
+      state: z.string(),
+      head_pos: z.number(),
+      overwrites: z.record(z.number(), z.string()),
+    }),
+  ),
 });
 type DeltaEvent = z.infer<typeof DeltaEvent>;
 const SseEvent = z.union([TotalEvent, DeltaEvent]);
@@ -85,7 +89,10 @@ function useSseL0(): { meta: UtmMeta | null; l0: L0State | null } {
                   ...Object.keys(msg.levels[0].overwrites).map(Number),
                 ),
               },
-              (_, i) => msg.levels[0].overwrites[i] ?? unblemishedRef.current.charAt(i) ?? "_",
+              (_, i) =>
+                msg.levels[0].overwrites[i] ??
+                unblemishedRef.current.charAt(i) ??
+                "_",
             ).join(""),
           };
           setExposedL0(l0Ref.current);
@@ -93,19 +100,19 @@ function useSseL0(): { meta: UtmMeta | null; l0: L0State | null } {
         }
         case "delta": {
           l0Ref.current = {
-            steps: msg.total_steps,
-            state: msg.state,
-            headPos: msg.head_pos,
+            steps: msg.levels[0].steps,
+            state: msg.levels[0].state,
+            headPos: msg.levels[0].head_pos,
             tape: Array.from(
               {
                 length: Math.max(
                   l0Ref.current?.tape.length ?? 0,
-                  msg.head_pos,
-                  ...Object.keys(msg.new_overwrites).map(Number),
+                  msg.levels[0].head_pos,
+                  ...Object.keys(msg.levels[0].overwrites).map(Number),
                 ),
               },
               (_, i) =>
-                msg.new_overwrites[i] ??
+                msg.levels[0].overwrites[i] ??
                 l0Ref.current?.tape[i] ??
                 unblemishedRef.current[i] ??
                 "_",

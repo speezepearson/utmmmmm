@@ -56,10 +56,7 @@ struct TotalEventJson {
 struct DeltaEventJson {
     #[serde(rename = "type")]
     event_type: &'static str,
-    total_steps: u64,
-    state: String,
-    head_pos: usize,
-    new_overwrites: HashMap<usize, char>,
+    levels: Vec<TowerLevelJson>,
 }
 
 // ── Build snapshot from decompiled L0 machine ──
@@ -246,13 +243,15 @@ fn sse_client_thread(
             compute_new_overwrites(&snapshot.overwrites, &mut client_state, &unblemished_syms);
         let delta = DeltaEventJson {
             event_type: "delta",
-            total_steps: snapshot.total_steps,
-            state: snapshot.state.clone(),
-            head_pos: snapshot.head_pos,
-            new_overwrites: new_overwrites
-                .into_iter()
-                .map(|(pos, s)| (pos, s.chars().next().unwrap()))
-                .collect(),
+            levels: vec![TowerLevelJson {
+                steps: snapshot.total_steps,
+                state: snapshot.state.clone(),
+                head_pos: snapshot.head_pos,
+                overwrites: new_overwrites
+                    .into_iter()
+                    .map(|(pos, s)| (pos, s.chars().next().unwrap()))
+                    .collect::<HashMap<_, _>>(),
+            }],
         };
         let json = serde_json::to_string(&delta).unwrap();
         if write!(writer, "data: {}\n\n", json).is_err() || writer.flush().is_err() {
