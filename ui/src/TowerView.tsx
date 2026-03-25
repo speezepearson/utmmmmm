@@ -32,13 +32,17 @@ interface L0State {
 
 const TotalEvent = z.object({
   type: z.literal("total"),
-  steps: z.number(),
   unblemished: z.string(),
   utm_states: z.array(z.string()),
   utm_symbol_chars: z.string(),
-  state: z.string(),
-  head_pos: z.number(),
-  overwrites: z.record(z.number(), z.string()),
+  levels: z.array(
+    z.object({
+      steps: z.number(),
+      state: z.string(),
+      head_pos: z.number(),
+      overwrites: z.record(z.number(), z.string()),
+    }),
+  ),
 });
 type TotalEvent = z.infer<typeof TotalEvent>;
 const DeltaEvent = z.object({
@@ -71,17 +75,17 @@ function useSseL0(): { meta: UtmMeta | null; l0: L0State | null } {
             utmSymbolChars: msg.utm_symbol_chars,
           });
           l0Ref.current = {
-            steps: msg.steps,
-            state: msg.state,
-            headPos: msg.head_pos,
+            steps: msg.levels[0].steps,
+            state: msg.levels[0].state,
+            headPos: msg.levels[0].head_pos,
             tape: Array.from(
               {
                 length: Math.max(
-                  msg.head_pos,
-                  ...Object.keys(msg.overwrites).map(Number),
+                  msg.levels[0].head_pos,
+                  ...Object.keys(msg.levels[0].overwrites).map(Number),
                 ),
               },
-              (_, i) => msg.overwrites[i] ?? unblemishedRef.current[i] ?? "_",
+              (_, i) => msg.levels[0].overwrites[i] ?? unblemishedRef.current.charAt(i) ?? "_",
             ).join(""),
           };
           setExposedL0(l0Ref.current);

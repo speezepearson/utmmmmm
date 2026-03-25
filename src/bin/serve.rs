@@ -34,16 +34,22 @@ type SseClients = Arc<Mutex<Vec<SseClient>>>;
 // ── JSON event types ──
 
 #[derive(Serialize)]
+struct TowerLevelJson {
+    steps: u64,
+    head_pos: usize,
+    state: String,
+    overwrites: HashMap<usize, char>,
+}
+
+#[derive(Serialize)]
 struct TotalEventJson {
     #[serde(rename = "type")]
     event_type: &'static str,
-    steps: u64,
     unblemished: String,
     utm_states: Vec<String>,
     utm_symbol_chars: String,
-    state: String,
-    head_pos: usize,
-    overwrites: HashMap<usize, char>,
+
+    levels: Vec<TowerLevelJson>,
 }
 
 #[derive(Serialize)]
@@ -210,17 +216,19 @@ fn sse_client_thread(
     // Send total event
     let total = TotalEventJson {
         event_type: "total",
-        steps: initial.total_steps,
         unblemished: (*unblemished_str).clone(),
         utm_states: (*utm_states).clone(),
         utm_symbol_chars: (*utm_symbol_chars).clone(),
-        state: initial.state.clone(),
-        head_pos: initial.head_pos,
-        overwrites: initial
-            .overwrites
-            .iter()
-            .map(|(&pos, s)| (pos, s.to_string().chars().next().unwrap()))
-            .collect::<HashMap<_, _>>(),
+        levels: vec![TowerLevelJson {
+            steps: initial.total_steps,
+            state: initial.state.clone(),
+            head_pos: initial.head_pos,
+            overwrites: initial
+                .overwrites
+                .iter()
+                .map(|(&pos, s)| (pos, s.to_string().chars().next().unwrap()))
+                .collect::<HashMap<_, _>>(),
+        }],
     };
     let json = serde_json::to_string(&total).unwrap();
     if write!(writer, "data: {}\n\n", json).is_err() || writer.flush().is_err() {
