@@ -1,47 +1,111 @@
 use std::cmp::max;
 use std::fmt::Write;
+use std::sync::Arc;
+use std::sync::LazyLock;
 
 use serde::Serialize;
 
-use crate::infinity::{header_len, InfiniteTapeExtender};
-use crate::tm::{RunningTuringMachine, SimpleTuringMachineSpec, TapeExtender, TuringMachineSpec};
+use crate::compiled::CompiledTapeExtender;
+use crate::compiled::{CState, CompiledTuringMachineSpec};
+use crate::tm::{
+    step, RunningTMStatus, RunningTuringMachine, SimpleTuringMachineSpec, TapeExtender,
+    TuringMachineSpec,
+};
+use crate::utm::UTM_SPEC;
 use crate::utm::{MyUtmEncodingScheme, State, Symbol, UtmEncodingScheme};
 
 pub type UtmTm<'a> = RunningTuringMachine<'a, SimpleTuringMachineSpec<State, Symbol>>;
+pub type CompiledUtmSpec<'a> =
+    CompiledTuringMachineSpec<'a, SimpleTuringMachineSpec<State, Symbol>>;
 
-pub struct TowerLevel<'a> {
-    pub machine: UtmTm<'a>,
-    pub max_head_pos: usize,
-    prev_state: Option<State>,
+#[derive(Clone)]
+pub struct TowerLevel<TM> {
+    pub tm: TM,
+    pub total_steps: u64,
+}
+pub type CompiledTowerLevel<'a> = TowerLevel<RunningTuringMachine<'a, CompiledUtmSpec<'a>>>;
+pub type UtmTowerLevel<'a> =
+    TowerLevel<RunningTuringMachine<'a, SimpleTuringMachineSpec<State, Symbol>>>;
+
+pub struct Tower<'a> {
+    pub base: CompiledTowerLevel<'a>,
+    pub decoded: Vec<UtmTowerLevel<'a>>,
+    pub clean_compiled_state: CState,
 }
 
-impl<'a> TowerLevel<'a> {
-    pub fn new(machine: UtmTm<'a>) -> Self {
-        let max_head_pos = machine.pos;
+impl<'a> Tower<'a> {
+    pub fn new(tm: RunningTuringMachine<'a, CompiledUtmSpec<'a>>) -> Self {
+        let clean_compiled_state = tm.spec.compile_state(State::Init);
         Self {
-            machine,
-            max_head_pos,
-            prev_state: None,
+            base: TowerLevel { tm, total_steps: 0 },
+            decoded: Vec::new(),
+            clean_compiled_state,
         }
     }
 
-    pub fn update_machine(&mut self, machine: UtmTm<'a>) {
-        self.machine = machine;
-        if self.machine.pos > self.max_head_pos {
-            self.max_head_pos = self.machine.pos;
-        }
+    pub fn as_vec(&'a self) -> Vec<UtmTowerLevel<'a>> {
+        let mut result: Vec<UtmTowerLevel> = vec![TowerLevel {
+            total_steps: self.base.total_steps,
+            tm: self.base.tm.spec.decompile(&self.base.tm),
+        }];
+        result.extend(self.decoded.iter().map(|l| l.clone()));
+        result
     }
 
-    pub fn snapshot_state(&mut self) {
-        self.prev_state = Some(self.machine.state);
+    pub fn step(
+        &mut self,
+        extender: &mut CompiledTapeExtender<SimpleTuringMachineSpec<State, Symbol>>,
+    ) -> RunningTMStatus {
+        if self.base.tm.pos >= self.base.tm.tape.len() {
+            extender.extend(&mut self.base.tm.tape, self.base.tm.pos + 1);
+        }
+        let prev_state = self.base.tm.state;
+        let res = step(&mut self.base.tm);
+        self.base.total_steps += 1;
+        // eprintln!("step: {:?}", res);
+
+        if self.base.tm.state == prev_state || self.base.tm.state != self.clean_compiled_state {
+            // We didn't just transition into the clean state, so decoding isn't well-defined.
+            return res;
+        }
+
+        let base_decompiled = self.base.tm.spec.decompile(&self.base.tm);
+
+        let mut cur = &base_decompiled;
+        let mut decoding = self.decoded.as_mut_slice();
+        while let Some((next, rest)) = decoding.split_first_mut() {
+            if !decode_into_level(cur, next) {
+                // next level didn't enter Init, so we're done
+                return res;
+            }
+            (cur, decoding) = (&next.tm, rest);
+        }
+
+        // we ran into the end of self.decoded, so we need to add a new level
+        let new_level = TowerLevel {
+            total_steps: 0,
+            tm: MyUtmEncodingScheme::decode(&*UTM_SPEC, &cur.tape)
+                .expect("it should always be okay to decode a utm that just entered Init"),
+        };
+        self.decoded.push(new_level);
+
+        return res;
+    }
+}
+
+fn decode_into_level<'a>(tm: &UtmTm<'a>, dst: &mut UtmTowerLevel<'a>) -> bool {
+    let decoded = MyUtmEncodingScheme::decode(&*UTM_SPEC, &tm.tape)
+        .expect("it should always be okay to decode a utm that just entered Init");
+    let old_state = dst.tm.state;
+    let new_state = decoded.state;
+    dst.tm = decoded;
+
+    if new_state != old_state && new_state == State::Init {
+        dst.total_steps += 1;
+        return true;
     }
 
-    pub fn entered_init(&self) -> bool {
-        match self.prev_state {
-            Some(prev) => self.machine.state == State::Init && prev != State::Init,
-            None => false,
-        }
-    }
+    return false;
 }
 
 #[derive(Serialize)]
@@ -79,134 +143,4 @@ fn level_to_json(tm: &UtmTm, end: usize) -> TowerLevelJson {
         state: format!("{:?}", tm.state),
         tape_len: tm.tape.len(),
     }
-}
-
-/// Format a tape slice as plain text. Shows tape[0..end].
-pub fn tape_view_range(tm: &UtmTm, end: usize) -> String {
-    let mut out = String::from("    ");
-    let blank = tm.spec.blank();
-
-    for i in 0..end {
-        let sym = if i < tm.tape.len() { tm.tape[i] } else { blank };
-        write!(out, "{}", sym).unwrap();
-    }
-
-    if end < tm.tape.len() {
-        out.push_str(" ...");
-    }
-    write!(out, " (state={:?}, pos={})", tm.state, tm.pos).unwrap();
-    out
-}
-
-/// Add ANSI color codes to tower output.
-/// Light red background on head cells, light green on *, X, Y, ^, >.
-pub fn colorize_ansi(plain: &str) -> String {
-    let mut out = String::with_capacity(plain.len() * 2);
-    for line in plain.lines() {
-        // Parse head position from "(state=..., pos=N)" suffix
-        let head_col = parse_head_col(line);
-        for (i, ch) in line.char_indices() {
-            if Some(i) == head_col {
-                write!(out, "\x1b[101m{}\x1b[0m", ch).unwrap();
-            } else if matches!(ch, '*' | 'X' | 'Y' | '^' | '>') {
-                write!(out, "\x1b[102m{}\x1b[0m", ch).unwrap();
-            } else {
-                out.push(ch);
-            }
-        }
-        out.push('\n');
-    }
-    out
-}
-
-/// Find the character column of the head cell in a tape_view_range line.
-/// Lines start with "    " (4 spaces), then tape symbols, so head is at column 4 + pos.
-fn parse_head_col(line: &str) -> Option<usize> {
-    let marker = "pos=";
-    let pos_start = line.rfind(marker)?;
-    let after = &line[pos_start + marker.len()..];
-    let end = after.find(')')?;
-    let pos: usize = after[..end].parse().ok()?;
-    // The tape starts at column 4 (the "    " prefix)
-    Some(4 + pos)
-}
-
-/// Decode the next level from a parent machine, extending the tape as needed.
-/// Returns None if decoding fails (tape too short, etc.)
-pub fn decode_next_level<'a>(
-    utm: &'a SimpleTuringMachineSpec<State, Symbol>,
-    parent: &mut UtmTm<'a>,
-    extender: &mut InfiniteTapeExtender,
-) -> Option<UtmTm<'a>> {
-    let min_len = max(header_len(), parent.pos + 100);
-    extender.extend(&mut parent.tape, min_len);
-    MyUtmEncodingScheme::decode(utm, &parent.tape).ok()
-}
-
-/// Build the tower by decoding each level from the previous.
-/// tower[0] = decompiled L0, tower[1] = decode(tower[0]), etc.
-/// Re-decodes level i+1 when level i entered Init.
-/// Grows the tower by at most one new level per call.
-pub fn update_tower<'a>(
-    utm: &'a SimpleTuringMachineSpec<State, Symbol>,
-    tower: &mut Vec<TowerLevel<'a>>,
-    extender: &mut InfiniteTapeExtender,
-) {
-    let mut level = 0;
-    loop {
-        if level > 0 && !tower[level].entered_init() {
-            break;
-        }
-
-        if let Some(next) = decode_next_level(utm, &mut tower[level].machine, extender) {
-            if level + 1 < tower.len() {
-                tower[level + 1].update_machine(next);
-            } else {
-                tower.push(TowerLevel::new(next));
-                break;
-            }
-            level += 1;
-        } else {
-            break;
-        }
-    }
-
-    for tl in tower.iter_mut() {
-        tl.snapshot_state();
-    }
-}
-
-pub fn format_tower<'a>(
-    tower: &mut [TowerLevel<'a>],
-    total_steps: u64,
-    utm: &'a SimpleTuringMachineSpec<State, Symbol>,
-    extender: &mut InfiniteTapeExtender,
-) -> String {
-    let mut buf = String::new();
-    writeln!(
-        buf,
-        "═══ {} steps ═══════════════════════════════════════",
-        total_steps
-    )
-    .unwrap();
-
-    for (i, tl) in tower.iter().enumerate() {
-        writeln!(buf, "Level {} ({} symbols):", i, tl.machine.tape.len()).unwrap();
-        writeln!(
-            buf,
-            "{}",
-            tape_view_range(&tl.machine, tl.max_head_pos + 10)
-        )
-        .unwrap();
-    }
-
-    // Decode and print one more level beyond the tower.
-    let last = tower.last_mut().unwrap();
-    if let Some(extra) = decode_next_level(utm, &mut last.machine, extender) {
-        let i = tower.len();
-        writeln!(buf, "Level {} ({} symbols):", i, extra.tape.len()).unwrap();
-        writeln!(buf, "{}", tape_view_range(&extra, extra.pos + 10)).unwrap();
-    }
-
-    buf
 }

@@ -13,8 +13,10 @@ use utmmmmm::delta::{compute_new_overwrites, current_overwrites, ClientLevelStat
 use utmmmmm::infinity::InfiniteTapeExtender;
 use utmmmmm::savepoint::{load_savepoint, save_savepoint};
 use utmmmmm::tm::{
-    Dir, RunningTuringMachine, SimpleTuringMachineSpec, TapeExtender, TuringMachineSpec,
+    Dir, RunningTMStatus, RunningTuringMachine, SimpleTuringMachineSpec, TapeExtender,
+    TuringMachineSpec,
 };
+use utmmmmm::tower::Tower;
 use utmmmmm::utm::{State, Symbol, UTM_SPEC};
 
 // ── Snapshot: shared between tower thread and SSE client threads ──
@@ -54,29 +56,6 @@ struct DeltaEventJson {
     new_overwrites: HashMap<usize, char>,
 }
 
-// ── Tape reconstruction (for total event) ──
-
-fn reconstruct_tape(
-    unblemished: &str,
-    overwrites: &HashMap<usize, Symbol>,
-    tape_len: usize,
-) -> String {
-    let ub = unblemished.as_bytes();
-    let mut bytes = Vec::with_capacity(tape_len);
-    for i in 0..tape_len {
-        if let Some(&sym) = overwrites.get(&i) {
-            let mut s = String::new();
-            write!(s, "{}", sym).unwrap();
-            bytes.push(s.as_bytes()[0]);
-        } else if i < ub.len() {
-            bytes.push(ub[i]);
-        } else {
-            bytes.push(b'_');
-        }
-    }
-    String::from_utf8(bytes).unwrap()
-}
-
 // ── Build snapshot from decompiled L0 machine ──
 
 fn build_snapshot(
@@ -114,39 +93,20 @@ fn sim_thread(
     let utm = &*UTM_SPEC;
     let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
 
-    let init_cstate = compiled
-        .original_states
-        .iter()
-        .position(|&s| s == State::Init)
-        .map(|i| CState(i as u8))
-        .expect("Init state should exist");
-
-    let mut tm = RunningTuringMachine::new(&compiled);
     let mut extender = CompiledTapeExtender::new(&compiled, Box::new(InfiniteTapeExtender));
-    extender.extend(&mut tm.tape, 1);
 
-    let mut total_steps: u64 = 0;
+    let mut tower = Tower::new(RunningTuringMachine::new(&compiled));
+    // if tower.base.tm.pos >= tower.base.tm.tape.len() {
+    //     extender.extend(&mut tower.base.tm.tape, 10);
+    // }
 
-    if let Some(ref sp_path) = savepoint_path {
-        if let Some((sp_steps, sp_state, sp_pos, sp_tape)) = load_savepoint(sp_path) {
-            total_steps = sp_steps;
-            tm.state = sp_state;
-            tm.pos = sp_pos;
-            tm.tape = sp_tape;
-            let tape_len = tm.tape.len();
-            extender.extend(&mut tm.tape, tape_len);
-            eprintln!(
-                "Loaded savepoint from {}: step {}, tape len {}",
-                sp_path,
-                total_steps,
-                tm.tape.len()
-            );
-        }
+    if let Some(ref _sp_path) = savepoint_path {
+        todo!();
     }
 
-    let mut base_max_pos: usize = tm.pos;
+    let mut base_max_pos: usize = tower.base.tm.pos;
     let mut inf_extender = InfiniteTapeExtender;
-    let mut last_savepoint_step = total_steps;
+    let mut last_savepoint_step = tower.base.total_steps;
 
     // Reference tape for overwrite comparison
     let mut reference: Vec<Symbol> = Vec::new();
@@ -154,7 +114,7 @@ fn sim_thread(
     let snapshot_interval = Duration::from_millis(30);
     let mut last_snapshot = Instant::now();
     let start_time = Instant::now();
-    let mut prev_cstate = tm.state;
+    let mut prev_cstate = tower.base.tm.state;
 
     // Profiling: time spent doing things other than the hot loop
     let mut total_overhead = Duration::ZERO;
@@ -162,10 +122,10 @@ fn sim_thread(
 
     // Initial snapshot
     {
-        let decompiled = compiled.decompile(&tm);
+        let decompiled = compiled.decompile(&tower.base.tm);
         let snap = Arc::new(build_snapshot(
             &decompiled,
-            total_steps,
+            tower.base.total_steps,
             &mut inf_extender,
             &mut reference,
         ));
@@ -173,53 +133,30 @@ fn sim_thread(
     }
 
     loop {
-        if tm.pos >= tm.tape.len() {
-            extender.extend(&mut tm.tape, tm.pos + 1);
+        if let RunningTMStatus::Accepted | RunningTMStatus::Rejected = tower.step(&mut extender) {
+            panic!("infinite machine should never halt");
         }
 
-        let sym = tm.tape[tm.pos];
-        if let Some((ns, nsym, dir)) = compiled.get_transition(tm.state, sym) {
-            tm.state = ns;
-            tm.tape[tm.pos] = nsym;
-            tm.pos = match dir {
-                Dir::Left => tm.pos.saturating_sub(1),
-                Dir::Right => tm.pos + 1,
-            };
-            total_steps += 1;
-            if tm.pos > base_max_pos {
-                base_max_pos = tm.pos;
-            }
-        } else {
-            // Halted
-            let decompiled = compiled.decompile(&tm);
-            let snap = Arc::new(build_snapshot(
-                &decompiled,
-                total_steps,
-                &mut inf_extender,
-                &mut reference,
-            ));
-            publish(&latest, &sse_clients, snap);
-            if let Some(ref sp_path) = savepoint_path {
-                save_savepoint(sp_path, total_steps, &tm);
-            }
-            return;
+        if tower.base.tm.pos > base_max_pos {
+            base_max_pos = tower.base.tm.pos;
         }
 
-        if tm.state != prev_cstate {
-            prev_cstate = tm.state;
+        if tower.base.tm.state != prev_cstate {
+            prev_cstate = tower.base.tm.state;
         }
 
+        let total_steps = tower.base.total_steps;
         if total_steps % 100_000 == 0 {
             let overhead_start_at = Instant::now();
-            if let Some(ref sp_path) = savepoint_path {
-                if total_steps - last_savepoint_step >= 1_000_000_000 {
-                    save_savepoint(sp_path, total_steps, &tm);
+            if total_steps - last_savepoint_step >= 1_000_000_000 {
+                if let Some(ref sp_path) = savepoint_path {
+                    save_savepoint(sp_path, total_steps, &tower.base.tm);
                     last_savepoint_step = total_steps;
                 }
             }
 
             if last_snapshot.elapsed() >= snapshot_interval {
-                let decompiled = compiled.decompile(&tm);
+                let decompiled = compiled.decompile(&tower.base.tm);
                 let snap = Arc::new(build_snapshot(
                     &decompiled,
                     total_steps,
@@ -279,7 +216,11 @@ fn sse_client_thread(
         utm_symbol_chars: (*utm_symbol_chars).clone(),
         state: initial.state.clone(),
         head_pos: initial.head_pos,
-        overwrites: initial.overwrites.iter().map(|(&pos, s)| (pos, s.to_string().chars().next().unwrap())).collect::<HashMap<_,_>>(),
+        overwrites: initial
+            .overwrites
+            .iter()
+            .map(|(&pos, s)| (pos, s.to_string().chars().next().unwrap()))
+            .collect::<HashMap<_, _>>(),
     };
     let json = serde_json::to_string(&total).unwrap();
     if write!(writer, "data: {}\n\n", json).is_err() || writer.flush().is_err() {
@@ -300,7 +241,10 @@ fn sse_client_thread(
             total_steps: snapshot.total_steps,
             state: snapshot.state.clone(),
             head_pos: snapshot.head_pos,
-            new_overwrites: new_overwrites.into_iter().map(|(pos, s)| (pos, s.chars().next().unwrap())).collect(),
+            new_overwrites: new_overwrites
+                .into_iter()
+                .map(|(pos, s)| (pos, s.chars().next().unwrap()))
+                .collect(),
         };
         let json = serde_json::to_string(&delta).unwrap();
         if write!(writer, "data: {}\n\n", json).is_err() || writer.flush().is_err() {

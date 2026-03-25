@@ -131,6 +131,18 @@ impl<'a, Guest: TuringMachineSpec> CompiledTuringMachineSpec<'a, Guest> {
         })
     }
 
+    pub fn compile_state(&self, state: Guest::State) -> CState {
+        CState(
+            self.original_states
+                .iter()
+                .position(|&s| s == state)
+                .expect("every state should be in the compiled state list") as u8,
+        )
+    }
+    pub fn decompile_state(&self, state: CState) -> Guest::State {
+        self.original_states[state.0 as usize]
+    }
+
     pub fn decompile(&self, tm: &RunningTuringMachine<Self>) -> RunningTuringMachine<'_, Guest> {
         RunningTuringMachine {
             spec: self.guest,
