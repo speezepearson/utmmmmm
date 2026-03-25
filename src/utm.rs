@@ -373,38 +373,44 @@ pub enum Symbol {
 
 impl std::fmt::Display for Symbol {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", match self {
-            Symbol::Blank => "_",
-            Symbol::Zero => "0",
-            Symbol::One => "1",
-            Symbol::X => "X",
-            Symbol::Y => "Y",
-            Symbol::Hash => "#",
-            Symbol::Pipe => "|",
-            Symbol::Semi => ";",
-            Symbol::Comma => ",",
-            Symbol::Caret => "^",
-            Symbol::L => "L",
-            Symbol::R => "R",
-            Symbol::Dot => ".",
-            Symbol::Star => "*",
-            Symbol::Gt => ">",
-            Symbol::Dollar => "$",
-        })
+        write!(
+            f,
+            "{}",
+            match self {
+                Symbol::Blank => "_",
+                Symbol::Zero => "0",
+                Symbol::One => "1",
+                Symbol::X => "X",
+                Symbol::Y => "Y",
+                Symbol::Hash => "#",
+                Symbol::Pipe => "|",
+                Symbol::Semi => ";",
+                Symbol::Comma => ",",
+                Symbol::Caret => "^",
+                Symbol::L => "L",
+                Symbol::R => "R",
+                Symbol::Dot => ".",
+                Symbol::Star => "*",
+                Symbol::Gt => ">",
+                Symbol::Dollar => "$",
+            }
+        )
     }
 }
 
 impl serde::Serialize for Symbol {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-        where
-            S: serde::Serializer {
+    where
+        S: serde::Serializer,
+    {
         serializer.serialize_str(&self.to_string())
     }
 }
 impl<'de> serde::Deserialize<'de> for Symbol {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-        where
-            D: serde::Deserializer<'de> {
+    where
+        D: serde::Deserializer<'de>,
+    {
         let s = String::deserialize(deserializer)?;
         Ok(match s.as_str() {
             "_" => Symbol::Blank,
@@ -423,10 +429,15 @@ impl<'de> serde::Deserialize<'de> for Symbol {
             "*" => Symbol::Star,
             ">" => Symbol::Gt,
             "$" => Symbol::Dollar,
-            _ => return Err(serde::de::Error::custom(format!("invalid utm symbol: {}", s))),
+            _ => {
+                return Err(serde::de::Error::custom(format!(
+                    "invalid utm symbol: {}",
+                    s
+                )))
+            }
         })
-    }}
-
+    }
+}
 
 const ALL_SYMBOLS: [Symbol; 16] = [
     Symbol::Blank,

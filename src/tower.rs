@@ -39,7 +39,11 @@ impl<'a> Tower<'a> {
     pub fn new(tm: RunningTuringMachine<'a, CompiledUtmSpec<'a>>) -> Self {
         let clean_compiled_state = tm.spec.compile_state(State::Init);
         Self {
-            base: TowerLevel { tm, total_steps: 0, max_head_pos: 0 },
+            base: TowerLevel {
+                tm,
+                total_steps: 0,
+                max_head_pos: 0,
+            },
             decoded: Vec::new(),
             clean_compiled_state,
         }
@@ -97,5 +101,5 @@ fn decode_into_level<'a>(tm: &UtmTm<'a>, dst: &mut UtmTowerLevel<'a>) -> bool {
     dst.max_head_pos = max(dst.max_head_pos, decoded.pos);
     dst.tm = decoded;
 
-    return new_state != old_state && new_state == State::Init ;
+    return new_state != old_state && new_state == State::Init;
 }

@@ -200,7 +200,7 @@ function TowerLevelView({ level, name }: { level: TowerLevel; name: string }) {
             colorizeTape(
               level.tape,
               level.headPos,
-            ) + " and so on",
+            ) + " &nbsp;&nbsp;&nbsp; and so on",
         }}
       />
     </div>

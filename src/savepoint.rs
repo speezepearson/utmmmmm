@@ -23,13 +23,9 @@ pub struct TowerLevelJson {
     pub overwrites: HashMap<usize, Symbol>,
 }
 
-pub fn build_snapshot<'a>(
-    tower: &'_ Tower<'a>,
-    inf_extender: &mut InfiniteTapeExtender,
-    reference: &mut Vec<Symbol>,
-) -> Snapshot {
+pub fn build_snapshot<'a>(tower: &'_ Tower<'a>, reference: &mut Vec<Symbol>) -> Snapshot {
     let decompiled = tower.base.tm.spec.decompile(&tower.base.tm);
-    inf_extender.extend(reference, decompiled.tape.len());
+    InfiniteTapeExtender.extend(reference, decompiled.tape.len());
     let it = std::iter::once(TowerLevel {
         total_steps: tower.base.total_steps,
         max_head_pos: tower.base.max_head_pos,
@@ -52,13 +48,8 @@ pub fn build_snapshot<'a>(
     }
 }
 
-pub fn save_savepoint(
-    path: &str,
-    tower: &Tower<'_>,
-    reference: &mut Vec<Symbol>,
-)
-{
-    let data = build_snapshot(tower, &mut InfiniteTapeExtender, reference);
+pub fn save_savepoint(path: &str, tower: &Tower<'_>, reference: &mut Vec<Symbol>) {
+    let data = build_snapshot(tower, reference);
     let tmp = format!("{}.tmp", path);
     let json = serde_json::to_string(&data).expect("serialize savepoint");
     let mut f = std::io::BufWriter::new(std::fs::File::create(&tmp).expect("create savepoint"));
@@ -76,7 +67,10 @@ pub fn save_savepoint(
 pub fn load_savepoint<'a>(path: &str, spec: &'a CompiledUtmSpec<'a>) -> Option<Tower<'a>> {
     let data = std::fs::read(path).ok()?;
     let snapshot: Snapshot = serde_json::from_slice(&data).ok()?;
-    let (snap_base, snap_decoded) = snapshot.levels.split_first().expect("savepoint should have at least one level");
+    let (snap_base, snap_decoded) = snapshot
+        .levels
+        .split_first()
+        .expect("savepoint should have at least one level");
 
     let mut tower = Tower::new(RunningTuringMachine::new(spec));
 
@@ -97,8 +91,9 @@ pub fn load_savepoint<'a>(path: &str, spec: &'a CompiledUtmSpec<'a>) -> Option<T
             spec: spec,
         },
     };
-    tower.decoded = snap_decoded.iter().map(|level| {
-        TowerLevel {
+    tower.decoded = snap_decoded
+        .iter()
+        .map(|level| TowerLevel {
             total_steps: level.steps,
             max_head_pos: level.max_head_pos,
             tm: RunningTuringMachine {
@@ -114,9 +109,8 @@ pub fn load_savepoint<'a>(path: &str, spec: &'a CompiledUtmSpec<'a>) -> Option<T
                 },
                 pos: level.head_pos,
             },
-        }
-
-    }).collect();
+        })
+        .collect();
 
     Some(tower)
 }

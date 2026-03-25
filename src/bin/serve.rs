@@ -1,27 +1,25 @@
 use std::collections::HashMap;
-use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
 use std::path::Path;
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::{mpsc, Arc, Mutex, RwLock};
 use std::thread;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tiny_http::{Header, Response, Server};
-use utmmmmm::compiled::{CState, CompiledTapeExtender, CompiledTuringMachineSpec};
-use utmmmmm::delta::{compute_new_overwrites, current_overwrites, ClientLevelState};
+use utmmmmm::compiled::{CompiledTapeExtender, CompiledTuringMachineSpec};
+use utmmmmm::delta::compute_new_overwrites;
 use utmmmmm::infinity::InfiniteTapeExtender;
-use utmmmmm::savepoint::{Snapshot, TowerLevelJson, build_snapshot, load_savepoint, save_savepoint};
-use utmmmmm::tm::{
-    Dir, RunningTMStatus, RunningTuringMachine, SimpleTuringMachineSpec, TapeExtender,
-    TuringMachineSpec,
+use utmmmmm::savepoint::{
+    build_snapshot, load_savepoint, save_savepoint, Snapshot, TowerLevelJson,
 };
-use utmmmmm::tower::{Tower, TowerLevel};
+use utmmmmm::tm::{RunningTMStatus, RunningTuringMachine, TapeExtender, TuringMachineSpec};
+use utmmmmm::tower::Tower;
 use utmmmmm::utm::{State, Symbol, UTM_SPEC};
 
 // ── Snapshot: shared between tower thread and SSE client threads ──
 
-type SseClient = mpsc::Sender<Arc<Snapshot>>;
+type SseClient = mpsc::Sender<Arc<DeltaEventJson>>;
 type SseClients = Arc<Mutex<Vec<SseClient>>>;
 
 // ── JSON event types ──
@@ -44,20 +42,59 @@ struct DeltaEventJson {
     levels: Vec<TowerLevelJson>,
 }
 
-fn publish(
-    latest: &Mutex<Option<Arc<Snapshot>>>,
-    sse_clients: &Mutex<Vec<SseClient>>,
-    snap: Arc<Snapshot>,
-) {
-    *latest.lock().unwrap() = Some(Arc::clone(&snap));
+fn patch_snapshot(
+    dst: &mut Snapshot,
+    tower: &Tower,
+    reference: &mut Vec<Symbol>,
+) -> DeltaEventJson {
+    let new = build_snapshot(tower, reference);
+    DeltaEventJson {
+        event_type: "delta",
+        levels: new
+            .levels
+            .iter()
+            .enumerate()
+            .map(|(i, level)| {
+                if dst.levels.len() <= i {
+                    dst.levels.push(TowerLevelJson {
+                        steps: 0,
+                        max_head_pos: 0,
+                        head_pos: 0,
+                        state: State::Init,
+                        overwrites: HashMap::new(),
+                    });
+                }
+                let new_overwrites = compute_new_overwrites(
+                    &level.overwrites,
+                    &mut dst.levels[i].overwrites,
+                    reference,
+                );
+
+                TowerLevelJson {
+                    steps: level.steps,
+                    max_head_pos: level.max_head_pos,
+                    state: level.state.clone(),
+                    head_pos: level.head_pos,
+                    overwrites: new_overwrites
+                        .into_iter()
+                        .map(|(pos, s)| (pos, s))
+                        .collect::<HashMap<_, _>>(),
+                }
+            })
+            .collect(),
+    }
+}
+
+fn publish(event: DeltaEventJson, sse_clients: &Mutex<Vec<SseClient>>) {
+    let message = Arc::new(event);
     let mut clients = sse_clients.lock().unwrap();
-    clients.retain(|tx| tx.send(Arc::clone(&snap)).is_ok());
+    clients.retain(|tx| tx.send(Arc::clone(&message)).is_ok());
 }
 
 // ── Main simulation thread ──
 
 fn sim_thread(
-    latest: Arc<Mutex<Option<Arc<Snapshot>>>>,
+    latest: Arc<RwLock<Option<Snapshot>>>,
     sse_clients: SseClients,
     savepoint_path: Option<String>,
 ) {
@@ -75,7 +112,6 @@ fn sim_thread(
     }
 
     let mut base_max_pos: usize = tower.base.tm.pos;
-    let mut inf_extender = InfiniteTapeExtender;
     let mut last_savepoint_step = tower.base.total_steps;
 
     // Reference tape for overwrite comparison
@@ -92,8 +128,17 @@ fn sim_thread(
 
     // Initial snapshot
     {
-        let snap = Arc::new(build_snapshot(&tower, &mut inf_extender, &mut reference));
-        publish(&latest, &sse_clients, snap);
+        publish(
+            patch_snapshot(
+                latest
+                    .write()
+                    .unwrap()
+                    .get_or_insert(Snapshot { levels: vec![] }),
+                &tower,
+                &mut reference,
+            ),
+            &sse_clients,
+        );
     }
 
     loop {
@@ -120,8 +165,17 @@ fn sim_thread(
             }
 
             if last_snapshot.elapsed() >= snapshot_interval {
-                let snap = Arc::new(build_snapshot(&tower, &mut inf_extender, &mut reference));
-                publish(&latest, &sse_clients, snap);
+                publish(
+                    patch_snapshot(
+                        latest
+                            .write()
+                            .unwrap()
+                            .get_or_insert(Snapshot { levels: vec![] }),
+                        &tower,
+                        &mut reference,
+                    ),
+                    &sse_clients,
+                );
                 last_snapshot = Instant::now();
             }
 
@@ -145,80 +199,34 @@ fn sim_thread(
 // ── SSE client thread ──
 
 fn sse_client_thread(
-    rx: mpsc::Receiver<Arc<Snapshot>>,
-    latest: Arc<Mutex<Option<Arc<Snapshot>>>>,
+    rx: mpsc::Receiver<Arc<DeltaEventJson>>,
+    latest: Arc<RwLock<Option<Snapshot>>>,
     unblemished_str: Arc<String>,
-    unblemished_syms: Arc<Vec<Symbol>>,
     utm_states: Arc<Vec<String>>,
     utm_symbol_chars: Arc<String>,
     mut writer: Box<dyn IoWrite + Send>,
 ) {
-    // Get initial snapshot (prefer stored latest, fall back to waiting on channel)
-    let initial = {
-        let stored = latest.lock().unwrap().as_ref().map(Arc::clone);
-        match stored {
-            Some(snap) => snap,
-            None => match rx.recv() {
-                Ok(snap) => snap,
-                Err(_) => return,
-            },
-        }
-    };
-
     // Send total event
     let total = TotalEventJson {
         event_type: "total",
         unblemished: (*unblemished_str).clone(),
         utm_states: (*utm_states).clone(),
         utm_symbol_chars: (*utm_symbol_chars).clone(),
-        levels: initial.levels.clone(),
+        levels: latest
+            .read()
+            .unwrap()
+            .as_ref()
+            .map(|s| s.levels.clone())
+            .unwrap_or_default(),
     };
     let json = serde_json::to_string(&total).unwrap();
     if write!(writer, "data: {}\n\n", json).is_err() || writer.flush().is_err() {
         return;
     }
 
-    // Initialize client state from the total snapshot's overwrites
-    let mut client_state = ClientLevelState {
-        overwrites: initial
-            .levels
-            .iter()
-            .map(|level| level.overwrites.clone())
-            .collect(),
-    };
-
     // Stream delta events
-    while let Ok(snapshot) = rx.recv() {
-        let delta = DeltaEventJson {
-            event_type: "delta",
-            levels: snapshot
-                .levels
-                .iter()
-                .enumerate()
-                .map(|(i, level)| {
-                    while client_state.overwrites.len() <= i {
-                        client_state.overwrites.push(HashMap::new());
-                    }
-                    let new_overwrites = compute_new_overwrites(
-                        &level.overwrites,
-                        &mut client_state.overwrites[i],
-                        &unblemished_syms,
-                    );
-
-                    TowerLevelJson {
-                        steps: level.steps,
-                        max_head_pos: level.max_head_pos,
-                        state: level.state.clone(),
-                        head_pos: level.head_pos,
-                        overwrites: new_overwrites
-                            .into_iter()
-                            .map(|(pos, s)| (pos, s))
-                            .collect::<HashMap<_, _>>(),
-                    }
-                })
-                .collect(),
-        };
-        let json = serde_json::to_string(&delta).unwrap();
+    while let Ok(event) = rx.recv() {
+        let json = serde_json::to_string(event.as_ref()).unwrap();
         if write!(writer, "data: {}\n\n", json).is_err() || writer.flush().is_err() {
             break;
         }
@@ -276,7 +284,7 @@ fn main() {
     let utm_symbol_chars: Arc<String> =
         Arc::new(utm.iter_symbols().map(|s| format!("{}", s)).collect());
 
-    let latest: Arc<Mutex<Option<Arc<Snapshot>>>> = Arc::new(Mutex::new(None));
+    let latest: Arc<RwLock<Option<Snapshot>>> = Arc::new(RwLock::new(None));
     let sse_clients: SseClients = Arc::new(Mutex::new(Vec::new()));
 
     // Start simulation background thread
@@ -332,7 +340,7 @@ fn main() {
             clients_c.lock().unwrap().push(tx);
 
             thread::spawn(move || {
-                sse_client_thread(rx, latest_c, ub_str, ub_syms, utm_st, utm_sc, writer);
+                sse_client_thread(rx, latest_c, ub_str, utm_st, utm_sc, writer);
             });
             continue;
         }

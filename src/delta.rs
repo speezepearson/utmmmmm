@@ -2,33 +2,6 @@ use std::collections::HashMap;
 use std::fmt::{Display, Write};
 use std::hash::Hash;
 
-/// Per-level client state: the overwrites the client currently has applied.
-pub struct ClientLevelState<Sym> {
-    pub overwrites: Vec<HashMap<usize, Sym>>,
-}
-
-impl<Sym: Copy + Eq + Hash> ClientLevelState<Sym> {
-    pub fn new() -> Self {
-        Self {
-            overwrites: vec![HashMap::new()],
-        }
-    }
-
-    /// Initialize from a full tape + reference (after sending a `total` event).
-    pub fn from_tape(tape: &[Sym], reference: &[Sym]) -> Self {
-        let overwrites = tape
-            .iter()
-            .zip(reference.iter())
-            .enumerate()
-            .filter(|(_, (c, r))| c != r)
-            .map(|(i, (&c, _))| (i, c))
-            .collect();
-        Self {
-            overwrites: vec![overwrites],
-        }
-    }
-}
-
 /// Compute the current set of overwrites (positions differing from reference).
 pub fn current_overwrites<Sym: Copy + Eq + Hash>(
     tape: &[Sym],
