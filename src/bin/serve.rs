@@ -97,15 +97,15 @@ fn sim_thread(
     latest: Arc<RwLock<Option<Snapshot>>>,
     sse_clients: SseClients,
     savepoint_path: Option<String>,
-    background: &InfiniteTape,
 ) {
+    let background = InfiniteTape::new();
     let utm = &*UTM_SPEC;
     let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
 
     let mut tower = Tower::new(RunningTuringMachine::new(&compiled));
 
     if let Some(ref sp_path) = savepoint_path {
-        if let Some(t) = load_savepoint(sp_path, &compiled, background) {
+        if let Some(t) = load_savepoint(sp_path, &compiled, &background) {
             tower = t;
         }
     }
@@ -131,7 +131,7 @@ fn sim_thread(
                     .unwrap()
                     .get_or_insert(Snapshot { levels: vec![] }),
                 &tower,
-                background,
+                &background,
             ),
             &sse_clients,
         );
@@ -156,7 +156,7 @@ fn sim_thread(
             let overhead_start_at = Instant::now();
             if total_steps - last_savepoint_step >= 1_000_000_000 {
                 if let Some(ref sp_path) = savepoint_path {
-                    save_savepoint(sp_path, &tower, background);
+                    save_savepoint(sp_path, &tower, &background);
                     last_savepoint_step = total_steps;
                 }
             }
@@ -169,7 +169,7 @@ fn sim_thread(
                             .unwrap()
                             .get_or_insert(Snapshot { levels: vec![] }),
                         &tower,
-                        background,
+                        &background,
                     ),
                     &sse_clients,
                 );
@@ -265,14 +265,12 @@ fn main() {
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or(8080);
 
-    let background = InfiniteTape::new();
-
     // Pre-compute the unblemished infinite tape (1M symbols)
     // TODO: we should technically dynamically send updates to the clients,
     // as though the tape will ever get to 1M symbols
     let unblemished_str: Arc<String> = {
         let mut syms: Vec<Symbol> = Vec::new();
-        background.extend(&mut syms, 1_000_000);
+        InfiniteTape::new().extend(&mut syms, 1_000_000);
         Arc::new(syms.iter().map(|s| format!("{}", s)).collect())
     };
 
@@ -289,7 +287,7 @@ fn main() {
     // Start simulation background thread
     let latest_clone = Arc::clone(&latest);
     let sse_clone = Arc::clone(&sse_clients);
-    thread::spawn(move || sim_thread(latest_clone, sse_clone, savepoint_path, &background));
+    thread::spawn(move || sim_thread(latest_clone, sse_clone, savepoint_path));
 
     let addr = format!("0.0.0.0:{}", port);
     let server = Server::http(&addr).expect("Failed to start HTTP server");
