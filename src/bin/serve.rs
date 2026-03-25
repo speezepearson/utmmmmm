@@ -45,7 +45,7 @@ struct DeltaEventJson {
 fn patch_snapshot(
     dst: &mut Snapshot,
     tower: &Tower,
-    background: &mut InfiniteTape,
+    background: &InfiniteTape,
 ) -> DeltaEventJson {
     let new = build_snapshot(tower, background);
     DeltaEventJson {
@@ -97,7 +97,7 @@ fn sim_thread(
     latest: Arc<RwLock<Option<Snapshot>>>,
     sse_clients: SseClients,
     savepoint_path: Option<String>,
-    background: &mut InfiniteTape,
+    background: &InfiniteTape,
 ) {
     let utm = &*UTM_SPEC;
     let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
@@ -265,7 +265,7 @@ fn main() {
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or(8080);
 
-    let mut background = InfiniteTape::new();
+    let background = InfiniteTape::new();
 
     // Pre-compute the unblemished infinite tape (1M symbols)
     // TODO: we should technically dynamically send updates to the clients,
@@ -289,7 +289,7 @@ fn main() {
     // Start simulation background thread
     let latest_clone = Arc::clone(&latest);
     let sse_clone = Arc::clone(&sse_clients);
-    thread::spawn(move || sim_thread(latest_clone, sse_clone, savepoint_path, &mut background));
+    thread::spawn(move || sim_thread(latest_clone, sse_clone, savepoint_path, &background));
 
     let addr = format!("0.0.0.0:{}", port);
     let server = Server::http(&addr).expect("Failed to start HTTP server");

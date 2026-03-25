@@ -10,7 +10,7 @@
 // fixed point we can compute left-to-right.
 // ════════════════════════════════════════════════════════════════════
 
-use std::{collections::HashMap, sync::LazyLock};
+use std::{cell::RefCell, collections::HashMap, sync::LazyLock};
 
 use crate::{
     compiled::{CSymbol, CompiledTuringMachineSpec},
@@ -47,36 +47,33 @@ pub fn header_len() -> usize {
     HEADER.len()
 }
 
-pub struct InfiniteTape(Vec<Symbol>);
+pub struct InfiniteTape(RefCell<Vec<Symbol>>);
 
 impl InfiniteTape {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self(RefCell::new(Vec::new()))
     }
 
-    pub fn get_realized(&self) -> &[Symbol] {
-        &self.0
+    pub fn get(&self, index: usize) -> Symbol {
+        self.extend_to(index);
+        self.0.borrow()[index]
     }
 
-    pub fn get(&mut self, index: usize) -> Symbol {
-        self.extend_self(index);
-        self.0[index]
-    }
-
-    pub fn iter_forever<'a>(&'a mut self) -> impl Iterator<Item = Symbol> + 'a {
+    pub fn iter_forever(&self) -> impl Iterator<Item = Symbol> + '_ {
         (0..).map(|i| self.get(i))
     }
 
-    pub fn extend(&mut self, dst: &mut Vec<Symbol>, index: usize) {
+    pub fn extend(&self, dst: &mut Vec<Symbol>, index: usize) {
         if dst.len() >= index {
             return;
         }
-        self.extend_self(index);
-        dst.extend_from_slice(&self.0[dst.len()..index]);
+        self.extend_to(index);
+        let cache = self.0.borrow();
+        dst.extend_from_slice(&cache[dst.len()..index]);
     }
 
     pub fn extend_compiled(
-        &mut self,
+        &self,
         dst: &mut Vec<CSymbol>,
         index: usize,
         spec: &CompiledTuringMachineSpec<SimpleTuringMachineSpec<State, Symbol>>,
@@ -84,16 +81,18 @@ impl InfiniteTape {
         if dst.len() >= index {
             return;
         }
-        self.extend_self(index);
+        self.extend_to(index);
+        let cache = self.0.borrow();
         dst.extend(
-            self.0[dst.len()..index]
+            cache[dst.len()..index]
                 .iter()
                 .map(|&s| spec.compile_symbol(s)),
         );
     }
 
-    fn extend_self(&mut self, index: usize) {
-        if index < self.0.len() {
+    fn extend_to(&self, index: usize) {
+        let mut cache = self.0.borrow_mut();
+        if index < cache.len() {
             return;
         }
 
@@ -103,16 +102,16 @@ impl InfiniteTape {
         let cell_width = 1 + n_sym_bits; // marker + bits
         let header_len = header.len();
 
-        while self.0.len() <= index {
-            let pos = self.0.len();
+        while cache.len() <= index {
+            let pos = cache.len();
             if pos < header_len {
-                self.0.push(header[pos]);
+                cache.push(header[pos]);
             } else {
                 let offset = pos - header_len;
                 if offset % cell_width == 0 {
                     // Marker position
                     let cell_index = offset / cell_width;
-                    self.0.push(if cell_index == 0 {
+                    cache.push(if cell_index == 0 {
                         Symbol::Caret
                     } else {
                         Symbol::Comma
@@ -122,10 +121,10 @@ impl InfiniteTape {
                     let cell_index = offset / cell_width;
                     let bit_offset = offset % cell_width - 1;
 
-                    let sym = self.0[cell_index]; // always available: cell_index < pos
+                    let sym = cache[cell_index]; // always available: cell_index < pos
                     let sym_idx = sym_to_idx[&sym];
                     let bit = (sym_idx >> (n_sym_bits - 1 - bit_offset)) & 1;
-                    self.0
+                    cache
                         .push(if bit == 1 { Symbol::One } else { Symbol::Zero });
                 }
             }

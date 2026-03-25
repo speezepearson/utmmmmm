@@ -6,7 +6,7 @@ use crate::utm::Symbol;
 /// Compute the current set of overwrites (positions differing from background).
 pub fn current_overwrites(
     tape: &[Symbol],
-    background: &mut InfiniteTape,
+    background: &InfiniteTape,
 ) -> HashMap<usize, Symbol> {
     tape.iter()
         .zip(background.iter_forever())
@@ -22,7 +22,7 @@ pub fn current_overwrites(
 pub fn compute_new_overwrites(
     current: &HashMap<usize, Symbol>,
     client: &mut HashMap<usize, Symbol>,
-    background: &mut InfiniteTape,
+    background: &InfiniteTape,
 ) -> Vec<(usize, Symbol)> {
     let mut new_overwrites = Vec::new();
 
@@ -58,21 +58,21 @@ mod tests {
 
     #[test]
     fn test_total_then_two_deltas() {
-        let mut background = InfiniteTape::new();
+        let background = InfiniteTape::new();
 
         // === Total event: tape has position 1 changed to X ===
         let mut tape = vec![];
         background.extend(&mut tape, 5);
 
         tape[1] = Symbol::Caret;
-        let mut client = current_overwrites(&tape, &mut background);
+        let mut client = current_overwrites(&tape, &background);
         assert_eq!(client, HashMap::from([(1, Symbol::Caret)]));
 
         tape[2] = Symbol::Caret;
         let delta = compute_new_overwrites(
-            &current_overwrites(&tape, &mut background),
+            &current_overwrites(&tape, &background),
             &mut client,
-            &mut background,
+            &background,
         );
         assert_eq!(delta, vec![(2, Symbol::Caret)]);
         assert_eq!(
@@ -83,9 +83,9 @@ mod tests {
         tape[1] = background.get(1);
         tape[3] = Symbol::Caret;
         let delta = compute_new_overwrites(
-            &current_overwrites(&tape, &mut background),
+            &current_overwrites(&tape, &background),
             &mut client,
-            &mut background,
+            &background,
         );
         assert_eq!(delta, vec![(1, background.get(1)), (3, Symbol::Caret)]);
         assert_eq!(

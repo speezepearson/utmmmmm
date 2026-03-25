@@ -295,7 +295,7 @@ fn test_utm_double_x() {
 
 #[test]
 fn test_infinite_tape_initial() {
-    let mut inf = crate::infinity::InfiniteTape::new();
+    let inf = crate::infinity::InfiniteTape::new();
 
     let mut tape: Vec<Symbol> = Vec::new();
     inf.extend(&mut tape, 100);
@@ -309,7 +309,7 @@ fn test_infinite_tape_initial() {
 
 #[test]
 fn test_infinite_tape_self_similar() {
-    let mut inf = crate::infinity::InfiniteTape::new();
+    let inf = crate::infinity::InfiniteTape::new();
     use crate::optimization_hints::OPTIMIZATION_HINTS;
 
     let mut outer_tape: Vec<Symbol> = Vec::new();
@@ -336,7 +336,7 @@ fn test_infinite_tape_self_similar() {
 
 #[test]
 fn test_decoded_tape_no_leading_blanks() {
-    let mut inf = crate::infinity::InfiniteTape::new();
+    let inf = crate::infinity::InfiniteTape::new();
 
     let utm = &*UTM_SPEC;
 
@@ -362,7 +362,7 @@ fn test_decoded_tape_no_leading_blanks() {
 /// failed with "expected at least 5 # delimiters, found 1".
 #[test]
 fn test_decode_needs_more_than_10k_symbols() {
-    let mut inf = crate::infinity::InfiniteTape::new();
+    let inf = crate::infinity::InfiniteTape::new();
     let header_len = HEADER.len();
 
     let utm = &*UTM_SPEC;

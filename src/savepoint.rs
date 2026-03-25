@@ -23,7 +23,7 @@ pub struct TowerLevelJson {
     pub overwrites: HashMap<usize, Symbol>,
 }
 
-pub fn build_snapshot<'a>(tower: &'_ Tower<'a>, background: &mut InfiniteTape) -> Snapshot {
+pub fn build_snapshot<'a>(tower: &'_ Tower<'a>, background: &InfiniteTape) -> Snapshot {
     let it = std::iter::once(TowerLevel {
         total_steps: tower.base.total_steps,
         max_head_pos: tower.base.max_head_pos,
@@ -46,7 +46,7 @@ pub fn build_snapshot<'a>(tower: &'_ Tower<'a>, background: &mut InfiniteTape) -
     }
 }
 
-pub fn save_savepoint(path: &str, tower: &Tower<'_>, background: &mut InfiniteTape) {
+pub fn save_savepoint(path: &str, tower: &Tower<'_>, background: &InfiniteTape) {
     let data = build_snapshot(tower, background);
     let tmp = format!("{}.tmp", path);
     let json = serde_json::to_string(&data).expect("serialize savepoint");
@@ -65,7 +65,7 @@ pub fn save_savepoint(path: &str, tower: &Tower<'_>, background: &mut InfiniteTa
 pub fn load_savepoint<'a>(
     path: &str,
     spec: &'a CompiledUtmSpec<'a>,
-    background: &mut InfiniteTape,
+    background: &InfiniteTape,
 ) -> Option<Tower<'a>> {
     let data = std::fs::read(path).ok()?;
     let snapshot: Snapshot = serde_json::from_slice(&data).ok()?;
