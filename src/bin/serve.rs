@@ -279,7 +279,7 @@ fn sse_client_thread(
         utm_symbol_chars: (*utm_symbol_chars).clone(),
         state: initial.state.clone(),
         head_pos: initial.head_pos,
-        overwrites: HashMap::new(), // TODO
+        overwrites: initial.overwrites.iter().map(|(&pos, s)| (pos, s.to_string().chars().next().unwrap())).collect::<HashMap<_,_>>(),
     };
     let json = serde_json::to_string(&total).unwrap();
     if write!(writer, "data: {}\n\n", json).is_err() || writer.flush().is_err() {
