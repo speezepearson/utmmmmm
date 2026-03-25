@@ -1,19 +1,8 @@
-use std::cmp::max;
-use std::fmt::Write;
-use std::sync::Arc;
-use std::sync::LazyLock;
-
-use serde::Deserialize;
-use serde::Serialize;
-
-use crate::compiled::CompiledTapeExtender;
 use crate::compiled::{CState, CompiledTuringMachineSpec};
-use crate::tm::{
-    step, RunningTMStatus, RunningTuringMachine, SimpleTuringMachineSpec, TapeExtender,
-    TuringMachineSpec,
-};
+use crate::tm::{step, RunningTMStatus, RunningTuringMachine, SimpleTuringMachineSpec};
 use crate::utm::UTM_SPEC;
 use crate::utm::{MyUtmEncodingScheme, State, Symbol, UtmEncodingScheme};
+use std::cmp::max;
 
 pub type UtmTm<'a> = RunningTuringMachine<'a, SimpleTuringMachineSpec<State, Symbol>>;
 pub type CompiledUtmSpec<'a> =
@@ -49,13 +38,7 @@ impl<'a> Tower<'a> {
         }
     }
 
-    pub fn step(
-        &mut self,
-        extender: &mut CompiledTapeExtender<SimpleTuringMachineSpec<State, Symbol>>,
-    ) -> RunningTMStatus {
-        if self.base.tm.pos >= self.base.tm.tape.len() {
-            extender.extend(&mut self.base.tm.tape, self.base.tm.pos + 1);
-        }
+    pub fn step(&mut self) -> RunningTMStatus {
         let prev_state = self.base.tm.state;
         let res = step(&mut self.base.tm);
         self.base.total_steps += 1;

@@ -7,13 +7,13 @@ use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tiny_http::{Header, Response, Server};
-use utmmmmm::compiled::{CompiledTapeExtender, CompiledTuringMachineSpec};
+use utmmmmm::compiled::CompiledTuringMachineSpec;
 use utmmmmm::delta::compute_new_overwrites;
-use utmmmmm::infinity::InfiniteTapeExtender;
+use utmmmmm::infinity::InfiniteTape;
 use utmmmmm::savepoint::{
     build_snapshot, load_savepoint, save_savepoint, Snapshot, TowerLevelJson,
 };
-use utmmmmm::tm::{RunningTMStatus, RunningTuringMachine, TapeExtender, TuringMachineSpec};
+use utmmmmm::tm::{RunningTMStatus, RunningTuringMachine, TuringMachineSpec};
 use utmmmmm::tower::Tower;
 use utmmmmm::utm::{State, Symbol, UTM_SPEC};
 
@@ -45,9 +45,9 @@ struct DeltaEventJson {
 fn patch_snapshot(
     dst: &mut Snapshot,
     tower: &Tower,
-    reference: &mut Vec<Symbol>,
+    background: &mut InfiniteTape,
 ) -> DeltaEventJson {
-    let new = build_snapshot(tower, reference);
+    let new = build_snapshot(tower, background);
     DeltaEventJson {
         event_type: "delta",
         levels: new
@@ -67,7 +67,7 @@ fn patch_snapshot(
                 let new_overwrites = compute_new_overwrites(
                     &level.overwrites,
                     &mut dst.levels[i].overwrites,
-                    reference,
+                    background,
                 );
 
                 TowerLevelJson {
@@ -97,25 +97,21 @@ fn sim_thread(
     latest: Arc<RwLock<Option<Snapshot>>>,
     sse_clients: SseClients,
     savepoint_path: Option<String>,
+    background: &mut InfiniteTape,
 ) {
     let utm = &*UTM_SPEC;
     let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
 
-    let mut extender = CompiledTapeExtender::new(&compiled, Box::new(InfiniteTapeExtender));
-
     let mut tower = Tower::new(RunningTuringMachine::new(&compiled));
 
     if let Some(ref sp_path) = savepoint_path {
-        if let Some(t) = load_savepoint(sp_path, &compiled) {
+        if let Some(t) = load_savepoint(sp_path, &compiled, background) {
             tower = t;
         }
     }
 
     let mut base_max_pos: usize = tower.base.tm.pos;
     let mut last_savepoint_step = tower.base.total_steps;
-
-    // Reference tape for overwrite comparison
-    let mut reference: Vec<Symbol> = Vec::new();
 
     let snapshot_interval = Duration::from_millis(30);
     let mut last_snapshot = Instant::now();
@@ -135,14 +131,15 @@ fn sim_thread(
                     .unwrap()
                     .get_or_insert(Snapshot { levels: vec![] }),
                 &tower,
-                &mut reference,
+                background,
             ),
             &sse_clients,
         );
     }
 
     loop {
-        if let RunningTMStatus::Accepted | RunningTMStatus::Rejected = tower.step(&mut extender) {
+        background.extend_compiled(&mut tower.base.tm.tape, tower.base.tm.pos + 1, &compiled);
+        if let RunningTMStatus::Accepted | RunningTMStatus::Rejected = tower.step() {
             panic!("infinite machine should never halt");
         }
 
@@ -159,7 +156,7 @@ fn sim_thread(
             let overhead_start_at = Instant::now();
             if total_steps - last_savepoint_step >= 1_000_000_000 {
                 if let Some(ref sp_path) = savepoint_path {
-                    save_savepoint(sp_path, &tower, &mut reference);
+                    save_savepoint(sp_path, &tower, background);
                     last_savepoint_step = total_steps;
                 }
             }
@@ -172,7 +169,7 @@ fn sim_thread(
                             .unwrap()
                             .get_or_insert(Snapshot { levels: vec![] }),
                         &tower,
-                        &mut reference,
+                        background,
                     ),
                     &sse_clients,
                 );
@@ -268,14 +265,16 @@ fn main() {
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or(8080);
 
+    let mut background = InfiniteTape::new();
+
     // Pre-compute the unblemished infinite tape (1M symbols)
-    let unblemished_syms = {
+    // TODO: we should technically dynamically send updates to the clients,
+    // as though the tape will ever get to 1M symbols
+    let unblemished_str: Arc<String> = {
         let mut syms: Vec<Symbol> = Vec::new();
-        InfiniteTapeExtender.extend(&mut syms, 1_000_000);
-        Arc::new(syms)
+        background.extend(&mut syms, 1_000_000);
+        Arc::new(syms.iter().map(|s| format!("{}", s)).collect())
     };
-    let unblemished_str: Arc<String> =
-        Arc::new(unblemished_syms.iter().map(|s| format!("{}", s)).collect());
 
     // Pre-compute UTM metadata for client-side decoding
     let utm = &*UTM_SPEC;
@@ -290,7 +289,7 @@ fn main() {
     // Start simulation background thread
     let latest_clone = Arc::clone(&latest);
     let sse_clone = Arc::clone(&sse_clients);
-    thread::spawn(move || sim_thread(latest_clone, sse_clone, savepoint_path));
+    thread::spawn(move || sim_thread(latest_clone, sse_clone, savepoint_path, &mut background));
 
     let addr = format!("0.0.0.0:{}", port);
     let server = Server::http(&addr).expect("Failed to start HTTP server");
@@ -313,7 +312,6 @@ fn main() {
             let latest_c = Arc::clone(&latest);
             let clients_c = Arc::clone(&sse_clients);
             let ub_str = Arc::clone(&unblemished_str);
-            let ub_syms = Arc::clone(&unblemished_syms);
             let utm_st = Arc::clone(&utm_states);
             let utm_sc = Arc::clone(&utm_symbol_chars);
             let mut writer = request.into_writer();

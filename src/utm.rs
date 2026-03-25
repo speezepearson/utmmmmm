@@ -8,8 +8,6 @@ use std::{
     sync::LazyLock,
 };
 
-use serde::Serialize;
-
 use crate::tm::{Dir, RunningTuringMachine, SimpleTuringMachineSpec, TuringMachineSpec};
 
 // ── Newtype wrappers for type safety ──

@@ -1,16 +1,17 @@
 use std::collections::HashMap;
-use std::fmt::{Display, Write};
-use std::hash::Hash;
 
-/// Compute the current set of overwrites (positions differing from reference).
-pub fn current_overwrites<Sym: Copy + Eq + Hash>(
-    tape: &[Sym],
-    reference: &[Sym],
-) -> HashMap<usize, Sym> {
+use crate::infinity::InfiniteTape;
+use crate::utm::Symbol;
+
+/// Compute the current set of overwrites (positions differing from background).
+pub fn current_overwrites(
+    tape: &[Symbol],
+    background: &mut InfiniteTape,
+) -> HashMap<usize, Symbol> {
     tape.iter()
-        .zip(reference.iter())
+        .zip(background.iter_forever())
         .enumerate()
-        .filter(|(_, (c, r))| c != r)
+        .filter(|(_, (c, r))| *c != r)
         .map(|(i, (&c, _))| (i, c))
         .collect()
 }
@@ -18,11 +19,11 @@ pub fn current_overwrites<Sym: Copy + Eq + Hash>(
 /// Diff the current overwrites against a client's known state.
 /// Returns the (position, display_string) pairs the client needs to apply,
 /// and updates `client` to match `current`.
-pub fn compute_new_overwrites<Sym: Copy + Eq + Hash>(
-    current: &HashMap<usize, Sym>,
-    client: &mut HashMap<usize, Sym>,
-    reference: &[Sym],
-) -> Vec<(usize, Sym)> {
+pub fn compute_new_overwrites(
+    current: &HashMap<usize, Symbol>,
+    client: &mut HashMap<usize, Symbol>,
+    background: &mut InfiniteTape,
+) -> Vec<(usize, Symbol)> {
     let mut new_overwrites = Vec::new();
 
     // Positions in current that differ from what client knows
@@ -38,7 +39,7 @@ pub fn compute_new_overwrites<Sym: Copy + Eq + Hash>(
     // Positions client has that are no longer overwritten (reverted to unblemished)
     for (&pos, _) in client.iter() {
         if !current.contains_key(&pos) {
-            let sym = reference[pos];
+            let sym = background.get(pos);
             new_overwrites.push((pos, sym));
         }
     }
@@ -57,69 +58,39 @@ mod tests {
 
     #[test]
     fn test_total_then_two_deltas() {
-        let reference = vec![
-            Symbol::Zero, // 0
-            Symbol::One,  // 1
-            Symbol::Zero, // 2
-            Symbol::One,  // 3
-            Symbol::Zero, // 4
-        ];
+        let mut background = InfiniteTape::new();
 
         // === Total event: tape has position 1 changed to X ===
-        let tape_0 = vec![
-            Symbol::Zero, // 0: same
-            Symbol::X,    // 1: overwritten
-            Symbol::Zero, // 2: same
-            Symbol::One,  // 3: same
-            Symbol::Zero, // 4: same
-        ];
+        let mut tape = vec![];
+        background.extend(&mut tape, 5);
 
-        // The total event gives the full tape string
-        let total_tape: String = tape_0.iter().map(|s| format!("{}", s)).collect();
-        assert_eq!(total_tape, "0X010");
+        tape[1] = Symbol::Caret;
+        let mut client = current_overwrites(&tape, &mut background);
+        assert_eq!(client, HashMap::from([(1, Symbol::Caret)]));
 
-        // Client state after total = overwrites relative to reference
-        let mut client = ClientLevelState::from_tape(&tape_0, &reference);
-        assert_eq!(client.overwrites[0].len(), 1);
-        assert_eq!(client.overwrites[0][&1], Symbol::X);
+        tape[2] = Symbol::Caret;
+        let delta = compute_new_overwrites(
+            &current_overwrites(&tape, &mut background),
+            &mut client,
+            &mut background,
+        );
+        assert_eq!(delta, vec![(2, Symbol::Caret)]);
+        assert_eq!(
+            client,
+            HashMap::from([(1, Symbol::Caret), (2, Symbol::Caret)])
+        );
 
-        // === Delta 1: position 2 also changed to Y ===
-        let tape_1 = vec![
-            Symbol::Zero, // 0: same
-            Symbol::X,    // 1: still overwritten (same)
-            Symbol::Y,    // 2: newly overwritten
-            Symbol::One,  // 3: same
-            Symbol::Zero, // 4: same
-        ];
-
-        let cur_1 = current_overwrites(&tape_1, &reference);
-        let delta_1 = compute_new_overwrites(&cur_1, &mut client.overwrites[0], &reference);
-
-        // Only position 2 is new
-        assert_eq!(delta_1, vec![(2, "Y".to_string())]);
-        // Client now knows about {1: X, 2: Y}
-        assert_eq!(client.overwrites[0].len(), 2);
-
-        // === Delta 2: position 1 reverted, position 3 changed to Star ===
-        let tape_2 = vec![
-            Symbol::Zero, // 0: same
-            Symbol::One,  // 1: reverted to unblemished
-            Symbol::Y,    // 2: still overwritten (same as delta 1)
-            Symbol::Star, // 3: newly overwritten
-            Symbol::Zero, // 4: same
-        ];
-
-        let cur_2 = current_overwrites(&tape_2, &reference);
-        let delta_2 = compute_new_overwrites(&cur_2, &mut client.overwrites[0], &reference);
-
-        // Position 1 reverted (client gets unblemished value "1")
-        // Position 3 newly overwritten with "*"
-        // Position 2 unchanged, not included
-        assert_eq!(delta_2, vec![(1, "1".to_string()), (3, "*".to_string())]);
-        // Client now knows about {2: Y, 3: Star}
-        assert_eq!(client.overwrites[0].len(), 2);
-        assert_eq!(client.overwrites[0].get(&1), None);
-        assert_eq!(client.overwrites[0][&2], Symbol::Y);
-        assert_eq!(client.overwrites[0][&3], Symbol::Star);
+        tape[1] = background.get(1);
+        tape[3] = Symbol::Caret;
+        let delta = compute_new_overwrites(
+            &current_overwrites(&tape, &mut background),
+            &mut client,
+            &mut background,
+        );
+        assert_eq!(delta, vec![(1, background.get(1)), (3, Symbol::Caret)]);
+        assert_eq!(
+            client,
+            HashMap::from([(2, Symbol::Caret), (3, Symbol::Caret)])
+        ); // it no longer remembers 1 because that pos is same as background now
     }
 }

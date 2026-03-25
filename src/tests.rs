@@ -1,3 +1,4 @@
+use crate::infinity::HEADER;
 use crate::tm::{
     run_tm, run_until_enters_state, HaltReason, RunUntilResult, RunningTuringMachine,
     TuringMachineSpec,
@@ -294,11 +295,10 @@ fn test_utm_double_x() {
 
 #[test]
 fn test_infinite_tape_initial() {
-    use crate::infinity::InfiniteTapeExtender;
-    use crate::tm::TapeExtender;
+    let mut inf = crate::infinity::InfiniteTape::new();
 
     let mut tape: Vec<Symbol> = Vec::new();
-    InfiniteTapeExtender.extend(&mut tape, 100);
+    inf.extend(&mut tape, 100);
     assert_eq!(tape[0], Symbol::Dollar);
     assert!(
         tape.len() >= 100,
@@ -309,12 +309,11 @@ fn test_infinite_tape_initial() {
 
 #[test]
 fn test_infinite_tape_self_similar() {
-    use crate::infinity::InfiniteTapeExtender;
+    let mut inf = crate::infinity::InfiniteTape::new();
     use crate::optimization_hints::OPTIMIZATION_HINTS;
-    use crate::tm::TapeExtender;
 
     let mut outer_tape: Vec<Symbol> = Vec::new();
-    InfiniteTapeExtender.extend(&mut outer_tape, 100_000);
+    inf.extend(&mut outer_tape, 100_000);
 
     let utm = &*UTM_SPEC;
     // Decode the outer tape to get the inner (guest) TM state.
@@ -326,7 +325,7 @@ fn test_infinite_tape_self_similar() {
     // Must use the same rule order as the infinite extender (which uses OPTIMIZATION_HINTS).
     let mut re_encoded =
         MyUtmEncodingScheme::encode_with_rule_order(&decoded, Some(OPTIMIZATION_HINTS));
-    InfiniteTapeExtender.extend(&mut re_encoded, 100_000);
+    inf.extend(&mut re_encoded, 100_000);
 
     assert_eq!(
         re_encoded[..100_000],
@@ -337,14 +336,13 @@ fn test_infinite_tape_self_similar() {
 
 #[test]
 fn test_decoded_tape_no_leading_blanks() {
-    use crate::infinity::InfiniteTapeExtender;
-    use crate::tm::TapeExtender;
+    let mut inf = crate::infinity::InfiniteTape::new();
 
     let utm = &*UTM_SPEC;
 
     // Build the infinite UTM tape and decode it
     let mut outer_tape: Vec<Symbol> = Vec::new();
-    InfiniteTapeExtender.extend(&mut outer_tape, 100_000);
+    inf.extend(&mut outer_tape, 100_000);
 
     let decoded =
         MyUtmEncodingScheme::decode(utm, &outer_tape).expect("should decode the infinite UTM tape");
@@ -364,26 +362,24 @@ fn test_decoded_tape_no_leading_blanks() {
 /// failed with "expected at least 5 # delimiters, found 1".
 #[test]
 fn test_decode_needs_more_than_10k_symbols() {
-    use crate::infinity::{header_len, InfiniteTapeExtender};
-    use crate::tm::TapeExtender;
+    let mut inf = crate::infinity::InfiniteTape::new();
+    let header_len = HEADER.len();
 
     let utm = &*UTM_SPEC;
 
     // 10k is NOT enough — the header alone is larger than that.
     let mut small_tape: Vec<Symbol> = Vec::new();
-    InfiniteTapeExtender.extend(&mut small_tape, 10_000);
+    inf.extend(&mut small_tape, header_len / 2);
     assert!(
         MyUtmEncodingScheme::decode(utm, &small_tape).is_err(),
         "10k symbols should NOT be enough to decode (header_len = {})",
-        header_len(),
+        header_len,
     );
 
     // header_len + 1000 IS enough.
-    let min_len = header_len() + 1_000;
     let mut big_tape: Vec<Symbol> = Vec::new();
-    InfiniteTapeExtender.extend(&mut big_tape, min_len);
-    MyUtmEncodingScheme::decode(utm, &big_tape)
-        .expect("should be able to decode a tape extended to header_len + 1000");
+    inf.extend(&mut big_tape, header_len + 1_000);
+    MyUtmEncodingScheme::decode(utm, &big_tape).expect("should be able to decode a long tape");
 }
 
 // ════════════════════════════════════════════════════════════════════

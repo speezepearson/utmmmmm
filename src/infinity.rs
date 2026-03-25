@@ -13,13 +13,14 @@
 use std::{collections::HashMap, sync::LazyLock};
 
 use crate::{
+    compiled::{CSymbol, CompiledTuringMachineSpec},
     optimization_hints::OPTIMIZATION_HINTS,
-    tm::{RunningTuringMachine, TapeExtender, TuringMachineSpec},
-    utm::{num_bits, MyUtmEncodingScheme, Symbol, UTM_SPEC},
+    tm::{RunningTuringMachine, SimpleTuringMachineSpec, TuringMachineSpec},
+    utm::{num_bits, MyUtmEncodingScheme, State, Symbol, UTM_SPEC},
 };
 
 /// The header: everything before the tape section ($ # rules # acc # state # blank #).
-static HEADER: LazyLock<Vec<Symbol>> = LazyLock::new(|| {
+pub static HEADER: LazyLock<Vec<Symbol>> = LazyLock::new(|| {
     let dummy = MyUtmEncodingScheme::encode_with_rule_order(
         &RunningTuringMachine::new(&*UTM_SPEC),
         Some(OPTIMIZATION_HINTS),
@@ -46,38 +47,86 @@ pub fn header_len() -> usize {
     HEADER.len()
 }
 
-pub struct InfiniteTapeExtender;
-impl TapeExtender<Symbol> for InfiniteTapeExtender {
-    fn extend(&mut self, tape: &mut Vec<Symbol>, min_size: usize) {
+pub struct InfiniteTape(Vec<Symbol>);
+
+impl InfiniteTape {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn get_realized(&self) -> &[Symbol] {
+        &self.0
+    }
+
+    pub fn get(&mut self, index: usize) -> Symbol {
+        self.extend_self(index);
+        self.0[index]
+    }
+
+    pub fn iter_forever<'a>(&'a mut self) -> impl Iterator<Item = Symbol> + 'a {
+        (0..).map(|i| self.get(i))
+    }
+
+    pub fn extend(&mut self, dst: &mut Vec<Symbol>, index: usize) {
+        if dst.len() >= index {
+            return;
+        }
+        self.extend_self(index);
+        dst.extend_from_slice(&self.0[dst.len()..index]);
+    }
+
+    pub fn extend_compiled(
+        &mut self,
+        dst: &mut Vec<CSymbol>,
+        index: usize,
+        spec: &CompiledTuringMachineSpec<SimpleTuringMachineSpec<State, Symbol>>,
+    ) {
+        if dst.len() >= index {
+            return;
+        }
+        self.extend_self(index);
+        dst.extend(
+            self.0[dst.len()..index]
+                .iter()
+                .map(|&s| spec.compile_symbol(s)),
+        );
+    }
+
+    fn extend_self(&mut self, index: usize) {
+        if index < self.0.len() {
+            return;
+        }
+
         let header = &*HEADER;
         let sym_to_idx = &*GUEST_SYM_TO_IDX;
         let n_sym_bits = *N_SYM_BITS;
         let cell_width = 1 + n_sym_bits; // marker + bits
         let header_len = header.len();
 
-        while tape.len() < min_size {
-            let pos = tape.len();
+        while self.0.len() <= index {
+            let pos = self.0.len();
             if pos < header_len {
-                tape.push(header[pos]);
+                self.0.push(header[pos]);
             } else {
                 let offset = pos - header_len;
                 if offset % cell_width == 0 {
                     // Marker position
                     let cell_index = offset / cell_width;
-                    tape.push(if cell_index == 0 {
+                    self.0.push(if cell_index == 0 {
                         Symbol::Caret
                     } else {
                         Symbol::Comma
                     });
                 } else {
-                    // Bit position: encode tape[cell_index]
+                    // Bit position: encode self.0[cell_index]
                     let cell_index = offset / cell_width;
                     let bit_offset = offset % cell_width - 1;
 
-                    let sym = tape[cell_index]; // always available: cell_index < pos
+                    let sym = self.0[cell_index]; // always available: cell_index < pos
                     let sym_idx = sym_to_idx[&sym];
                     let bit = (sym_idx >> (n_sym_bits - 1 - bit_offset)) & 1;
-                    tape.push(if bit == 1 { Symbol::One } else { Symbol::Zero });
+                    self.0
+                        .push(if bit == 1 { Symbol::One } else { Symbol::Zero });
                 }
             }
         }
