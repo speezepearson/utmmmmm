@@ -59,11 +59,12 @@ struct DeltaEventJson {
 // ── Build snapshot from decompiled L0 machine ──
 
 fn build_snapshot(
-    decompiled: &RunningTuringMachine<SimpleTuringMachineSpec<State, Symbol>>,
+    tower: &Tower<'_>,
     total_steps: u64,
     inf_extender: &mut InfiniteTapeExtender,
     reference: &mut Vec<Symbol>,
 ) -> Snapshot {
+    let decompiled = tower.base.tm.spec.decompile(&tower.base.tm);
     inf_extender.extend(reference, decompiled.tape.len());
     Snapshot {
         levels: vec![TowerLevelJson {
@@ -129,7 +130,7 @@ fn sim_thread(
     {
         let decompiled = compiled.decompile(&tower.base.tm);
         let snap = Arc::new(build_snapshot(
-            &decompiled,
+            &tower,
             tower.base.total_steps,
             &mut inf_extender,
             &mut reference,
@@ -163,7 +164,7 @@ fn sim_thread(
             if last_snapshot.elapsed() >= snapshot_interval {
                 let decompiled = compiled.decompile(&tower.base.tm);
                 let snap = Arc::new(build_snapshot(
-                    &decompiled,
+                    &tower,
                     total_steps,
                     &mut inf_extender,
                     &mut reference,
