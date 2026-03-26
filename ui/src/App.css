@@ -5,7 +5,6 @@
 .tm-tape {
   text-align: left;
   font-family: var(--mono);
-  font-size: 18px;
   line-height: 1.5;
   background: var(--code-bg);
   padding: 16px;

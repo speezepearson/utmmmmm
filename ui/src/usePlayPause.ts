@@ -4,11 +4,13 @@ const TARGET_FRAME_MS = 1000 / 30;
 
 export function usePlayPause({
   onSteps,
+  initialFps = 5,
 }: {
   onSteps: (count: number, stopAtMs: number) => boolean; // return true if still running
+  initialFps?: number;
 }) {
   const [playing, setPlaying] = useState(false);
-  const [fps, setFps] = useState(5);
+  const [fps, setFps] = useState(initialFps);
 
   const fpsRef = useRef(fps);
   useEffect(() => {

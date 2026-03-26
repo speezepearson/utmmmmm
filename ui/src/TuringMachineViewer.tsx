@@ -6,10 +6,11 @@ import { useTuringMachine } from "./useTuringMachine";
 type TuringMachineViewerProps = {
   init: TuringMachineSnapshot;
   onStateChange?: (oldState: State, cur: TuringMachineSnapshot) => void;
+  initialFps?: number;
 };
 
-export function TuringMachineViewer({ init, onStateChange }: TuringMachineViewerProps) {
-  const { snapshot, status, playPause, doStep, reset } = useTuringMachine(init, { onStateChange });
+export function TuringMachineViewer({ init, onStateChange, initialFps }: TuringMachineViewerProps) {
+  const { snapshot, status, playPause, doStep, reset } = useTuringMachine(init, { onStateChange, initialFps });
 
   const halted = status !== "running";
 

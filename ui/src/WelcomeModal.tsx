@@ -123,7 +123,7 @@ export function WelcomeModal() {
           border: "1px solid var(--border)",
           borderRadius: "12px",
           padding: "32px",
-          maxWidth: "40em",
+          maxWidth: "70%",
           width: "90%",
           boxShadow: "var(--shadow)",
           alignSelf: "flex-start",
@@ -137,7 +137,7 @@ export function WelcomeModal() {
           which flips all the bits on its tape:
         </p>
 
-        {snapshot && <TuringMachineViewer key={flipBitsInput} init={snapshot} />}
+        {snapshot && <TuringMachineViewer key={flipBitsInput} init={snapshot} initialFps={5} />}
 
         <TapeInput parsed={flipBitsSpec} value={flipBitsInput} onChange={setFlipBitsInput} />
 
@@ -147,7 +147,7 @@ export function WelcomeModal() {
           Here's a universal Turing machine simulating the same flip-bits machine on the same input:
         </p>
 
-        {utm1Snapshot && <TuringMachineViewer key={`utm1-${flipBitsInput}`} init={utm1Snapshot} onStateChange={onUtm1StateChange} />}
+        {utm1Snapshot && <TuringMachineViewer key={`utm1-${flipBitsInput}`} init={utm1Snapshot} onStateChange={onUtm1StateChange} initialFps={100} />}
 
         {decodedFromL1 && (
           <>
@@ -164,20 +164,22 @@ export function WelcomeModal() {
           Here's a UTM simulating that one:
         </p>
 
-        {utm2Snapshot && <TuringMachineViewer key={`utm2-${flipBitsInput}`} init={utm2Snapshot} onStateChange={onUtm2StateChange} />}
+        <div style={{ fontSize: "0.3em" }}>
 
-        {decodedFromL2 && (
-          <>
-            <p style={{ textAlign: 'left', marginBottom: "8px", marginTop: "16px", lineHeight: "1.6" }}>
-              Decoded (middle UTM):
-            </p>
-            <TapeView tm={decodedFromL2.l1} />
-            <p style={{ textAlign: 'left', marginBottom: "8px", marginTop: "8px", lineHeight: "1.6" }}>
-              Decoded (bit-flipper):
-            </p>
-            <TapeView tm={decodedFromL2.l0} />
-          </>
-        )}
+        {utm2Snapshot && <TuringMachineViewer key={`utm2-${flipBitsInput}`} init={utm2Snapshot} onStateChange={onUtm2StateChange} initialFps={10000000} />}
+
+{decodedFromL2 && (
+  <>
+    <p style={{ textAlign: 'left', marginBottom: "8px", marginTop: "16px", lineHeight: "1.6" }}>
+      Decoded (middle UTM):
+    </p>
+    <TapeView tm={decodedFromL2.l1} />
+    <p style={{ textAlign: 'left', marginBottom: "8px", marginTop: "8px", lineHeight: "1.6" }}>
+      Decoded (bit-flipper):
+    </p>
+    <TapeView tm={decodedFromL2.l0} />
+  </>
+)}</div>
 
         <button
           onClick={dismiss}

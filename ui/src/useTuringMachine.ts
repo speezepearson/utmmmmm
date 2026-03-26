@@ -15,6 +15,7 @@ export function useTuringMachine(
       oldState: State,
       cur: TuringMachineSnapshot,
     ) => void;
+    initialFps?: number;
   },
 ) {
   const onStateChangeRef = useRef(opts?.onStateChange);
@@ -82,7 +83,7 @@ export function useTuringMachine(
     [publish],
   );
 
-  const playPause = usePlayPause({ onSteps });
+  const playPause = usePlayPause({ onSteps, initialFps: opts?.initialFps });
 
   return {
     snapshot,
