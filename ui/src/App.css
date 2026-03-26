@@ -168,6 +168,14 @@
   border-radius: 2px;
 }
 
+.tm-state-graph-empty {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--text);
+  opacity: 0.6;
+  margin: 8px 0;
+}
+
 .utm-section-label {
   font-size: 9px;
   font-weight: 700;

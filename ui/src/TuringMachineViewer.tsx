@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { LogSlider } from "./LogSlider";
 import { TapeView } from "./TapeView";
+import { TMStateGraph } from "./TMStateGraph";
 import { type State, type TuringMachineSnapshot } from "./types";
 import { useTuringMachine } from "./useTuringMachine";
 
@@ -22,6 +24,7 @@ export function TuringMachineViewer({
   );
 
   const halted = status !== "running";
+  const [showGraph, setShowGraph] = useState(false);
 
   return (
     <div className="tm-viewer">
@@ -33,6 +36,9 @@ export function TuringMachineViewer({
           {playPause.playing ? "Pause" : "Play"}
         </button>
         <button onClick={reset}>Reset</button>
+        <button onClick={() => setShowGraph((v) => !v)}>
+          {showGraph ? "Hide Graph" : "Show Graph"}
+        </button>
         <LogSlider
           label="FPS"
           value={playPause.fps}
@@ -43,6 +49,10 @@ export function TuringMachineViewer({
       </div>
 
       <TapeView tm={snapshot} stateDescriptions={stateDescriptions} />
+
+      {showGraph && (
+        <TMStateGraph spec={snapshot.spec} state={snapshot.state} />
+      )}
 
       {halted && (
         <div className={`tm-result tm-result-${status}`}>
