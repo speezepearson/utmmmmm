@@ -140,9 +140,7 @@ export function WelcomeModal() {
           Welcome to the Self-Simulating Tower!
         </h2>
 
-        <p
-          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
-        >
+        <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           Here's a simple Turing machine (you know what a{" "}
           <a href="https://en.wikipedia.org/wiki/Turing_machine">
             Turing machine
@@ -169,9 +167,7 @@ export function WelcomeModal() {
 
         <hr style={{ margin: "3em 0" }} />
 
-        <p
-          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
-        >
+        <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           Here's a universal Turing machine simulating the same flip-bits
           machine on the same input:
         </p>
@@ -207,9 +203,7 @@ export function WelcomeModal() {
           )}
         </div>
 
-        <p
-          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
-        >
+        <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           You can kinda see how it works:
           <ul>
             <li>
@@ -237,17 +231,13 @@ export function WelcomeModal() {
           comparing one bit at a time.
         </p>
 
-        <p
-          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
-        >
+        <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           I find it pleasantly mesmerizing to watch.
         </p>
 
         <hr style={{ margin: "3em 0" }} />
 
-        <p
-          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
-        >
+        <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           Anyway, here's a UTM simulating that one:
         </p>
 
@@ -298,46 +288,42 @@ export function WelcomeModal() {
           )}
         </div>
 
-        <p
-          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
-        >
+        <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           Patience is a virtue.
         </p>
 
         <hr style={{ margin: "3em 0" }} />
 
-        <p
-          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
-        >
+        <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           And, you know, there's no reason this ever needs to <i>stop</i>. We
           could construct a (infinitely long, lazily initialized) tape that
           describes a UTM simulating a UTM simulating a UTM simulating itself
           simulating...
         </p>
 
-        <p
-          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
-        >
+        <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           That simulation is screaming along right now on some cloud machine.
           The fruits of its labor are being streamed to you now!
         </p>
 
-        <button
-          onClick={dismiss}
-          style={{
-            marginTop: "16px",
-            fontFamily: "var(--mono)",
-            fontSize: "14px",
-            padding: "8px 20px",
-            borderRadius: "6px",
-            border: "1px solid var(--border)",
-            background: "var(--accent)",
-            color: "#fff",
-            cursor: "pointer",
-          }}
-        >
-          Show me the fruits
-        </button>
+        <div style={{ textAlign: "center" }}>
+          <button
+            onClick={dismiss}
+            style={{
+              marginTop: "16px",
+              fontFamily: "var(--mono)",
+              fontSize: "14px",
+              padding: "8px 20px",
+              borderRadius: "6px",
+              border: "1px solid var(--border)",
+              background: "var(--accent)",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Show me the fruits!
+          </button>
+        </div>
       </div>
     </div>
   );
