@@ -1,0 +1,11 @@
+{
+  "name": "utmmmmm",
+  "version": "0.1.0",
+  "files": [
+    "utmmmmm_bg.wasm",
+    "utmmmmm.js",
+    "utmmmmm.d.ts"
+  ],
+  "main": "utmmmmm.js",
+  "types": "utmmmmm.d.ts"
+}

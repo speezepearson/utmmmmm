@@ -9,6 +9,7 @@ pub mod tower;
 #[allow(dead_code)]
 pub mod toy_machines;
 pub mod utm;
+pub mod wasm;
 
 #[cfg(test)]
 mod tests;
