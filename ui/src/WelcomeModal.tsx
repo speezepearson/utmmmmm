@@ -22,7 +22,7 @@ const utmSpec = getSpec("Universal Turing Machine");
 
 export function WelcomeModal() {
   const [visible, setVisible] = useState(
-    true, // () => !localStorage.getItem(STORAGE_KEY),
+    () => !localStorage.getItem(STORAGE_KEY),
   );
 
   const [flipBitsInput, setFlipBitsInput] = useState("010101");
@@ -101,12 +101,40 @@ export function WelcomeModal() {
     [],
   );
 
-  if (!visible) return null;
-
   const dismiss = () => {
     localStorage.setItem(STORAGE_KEY, "1");
     setVisible(false);
   };
+
+  if (!visible) {
+    return (
+      <button
+        onClick={() => setVisible(true)}
+        aria-label="Show welcome info"
+        style={{
+          position: "fixed",
+          bottom: "20px",
+          right: "20px",
+          zIndex: 999,
+          width: "36px",
+          height: "36px",
+          borderRadius: "50%",
+          border: "1px solid var(--border)",
+          background: "var(--bg)",
+          color: "var(--fg)",
+          fontSize: "18px",
+          fontFamily: "var(--mono)",
+          cursor: "pointer",
+          boxShadow: "var(--shadow)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        ?
+      </button>
+    );
+  }
 
   return (
     <div
@@ -296,7 +324,7 @@ export function WelcomeModal() {
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           And, you know, there's no reason this ever needs to <i>stop</i>. We
-          could construct a (infinitely long, lazily initialized) tape that
+          could construct an (infinitely long, lazily initialized) tape that
           describes a UTM simulating a UTM simulating a UTM simulating itself
           simulating...
         </p>
