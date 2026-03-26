@@ -119,6 +119,7 @@ export function WelcomeModal() {
         display: "flex",
         justifyContent: "center",
         padding: "32px 0",
+        textAlign: "left",
       }}
       onClick={dismiss}
     >
@@ -135,7 +136,9 @@ export function WelcomeModal() {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 style={{ marginTop: 0 }}>Welcome to the Self-Simulating Tower!</h2>
+        <h2 style={{ marginTop: 0, textAlign: "center" }}>
+          Welcome to the Self-Simulating Tower!
+        </h2>
 
         <p
           style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
@@ -147,20 +150,22 @@ export function WelcomeModal() {
           is, right?), which flips all the bits on its tape:
         </p>
 
-        {snapshot && (
-          <TuringMachineViewer
-            key={flipBitsInput}
-            init={snapshot}
-            initialFps={5}
-            stateDescriptions={flipBitsSpec.stateDescriptions}
-          />
-        )}
+        <div style={{ margin: "0 10%" }}>
+          {snapshot && (
+            <TuringMachineViewer
+              key={flipBitsInput}
+              init={snapshot}
+              initialFps={5}
+              stateDescriptions={flipBitsSpec.stateDescriptions}
+            />
+          )}
 
-        <TapeInput
-          parsed={flipBitsSpec}
-          value={flipBitsInput}
-          onChange={setFlipBitsInput}
-        />
+          <TapeInput
+            parsed={flipBitsSpec}
+            value={flipBitsInput}
+            onChange={setFlipBitsInput}
+          />
+        </div>
 
         <hr style={{ margin: "3em 0" }} />
 
@@ -171,31 +176,36 @@ export function WelcomeModal() {
           machine on the same input:
         </p>
 
-        {utm1Snapshot && (
-          <TuringMachineViewer
-            key={`utm1-${flipBitsInput}`}
-            init={utm1Snapshot}
-            onStateChange={onUtm1StateChange}
-            initialFps={30}
-            stateDescriptions={utmSpec.stateDescriptions}
-          />
-        )}
+        <div style={{ margin: "0 10%" }}>
+          {utm1Snapshot && (
+            <TuringMachineViewer
+              key={`utm1-${flipBitsInput}`}
+              init={utm1Snapshot}
+              onStateChange={onUtm1StateChange}
+              initialFps={30}
+              stateDescriptions={utmSpec.stateDescriptions}
+            />
+          )}
 
-        {decodedFromL1 && (
-          <>
-            <p
-              style={{
-                textAlign: "left",
-                marginBottom: "8px",
-                marginTop: "16px",
-                lineHeight: "1.6",
-              }}
-            >
-              Decoded from the UTM's tape:
-            </p>
-            <TapeView tm={decodedFromL1} stateDescriptions={flipBitsSpec.stateDescriptions} />
-          </>
-        )}
+          {decodedFromL1 && (
+            <>
+              <p
+                style={{
+                  textAlign: "left",
+                  marginBottom: "8px",
+                  marginTop: "16px",
+                  lineHeight: "1.6",
+                }}
+              >
+                Decoded from the UTM's tape:
+              </p>
+              <TapeView
+                tm={decodedFromL1}
+                stateDescriptions={flipBitsSpec.stateDescriptions}
+              />
+            </>
+          )}
+        </div>
 
         <p
           style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
@@ -241,17 +251,18 @@ export function WelcomeModal() {
           Anyway, here's a UTM simulating that one:
         </p>
 
-        <div style={{ fontSize: "0.3em" }}>
-          {utm2Snapshot && (
-            <TuringMachineViewer
-              key={`utm2-${flipBitsInput}`}
-              init={utm2Snapshot}
-              onStateChange={onUtm2StateChange}
-              initialFps={10000000}
-              stateDescriptions={utmSpec.stateDescriptions}
-            />
-          )}
-        </div>
+        <div style={{ margin: "0 10%" }}>
+          <div style={{ fontSize: "0.3em" }}>
+            {utm2Snapshot && (
+              <TuringMachineViewer
+                key={`utm2-${flipBitsInput}`}
+                init={utm2Snapshot}
+                onStateChange={onUtm2StateChange}
+                initialFps={10000000}
+                stateDescriptions={utmSpec.stateDescriptions}
+              />
+            )}
+          </div>
 
           {decodedFromL2 && (
             <>
@@ -265,7 +276,10 @@ export function WelcomeModal() {
               >
                 Decoded (middle UTM):
               </p>
-              <TapeView tm={decodedFromL2.l1} stateDescriptions={utmSpec.stateDescriptions} />
+              <TapeView
+                tm={decodedFromL2.l1}
+                stateDescriptions={utmSpec.stateDescriptions}
+              />
               <p
                 style={{
                   textAlign: "left",
@@ -276,27 +290,36 @@ export function WelcomeModal() {
               >
                 Decoded (bit-flipper):
               </p>
-              <TapeView tm={decodedFromL2.l0} stateDescriptions={flipBitsSpec.stateDescriptions} />
+              <TapeView
+                tm={decodedFromL2.l0}
+                stateDescriptions={flipBitsSpec.stateDescriptions}
+              />
             </>
           )}
+        </div>
 
-<p
+        <p
           style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
         >
           Patience is a virtue.
         </p>
 
+        <hr style={{ margin: "3em 0" }} />
+
         <p
           style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
         >
-          And, you know, there's no reason this ever needs to <i>stop</i>. We could construct a (infinitely long, lazily initialized) tape
-          that describes a UTM simulating a UTM simulating a UTM simulating itself simulating...
+          And, you know, there's no reason this ever needs to <i>stop</i>. We
+          could construct a (infinitely long, lazily initialized) tape that
+          describes a UTM simulating a UTM simulating a UTM simulating itself
+          simulating...
         </p>
 
         <p
           style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
         >
-          That simulation is screaming along on some cloud machine. The fruits of its labor are being streamed to you now!
+          That simulation is screaming along right now on some cloud machine.
+          The fruits of its labor are being streamed to you now!
         </p>
 
         <button
