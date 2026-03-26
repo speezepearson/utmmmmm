@@ -4,9 +4,10 @@ import { colorizeTape } from "./colorizeTape";
 
 type TapeViewProps = {
   tm: TuringMachineSnapshot;
+  stateDescriptions?: Record<string, string>;
 };
 
-export function TapeView({ tm }: TapeViewProps) {
+export function TapeView({ tm, stateDescriptions }: TapeViewProps) {
   const colorizedHtml = useMemo(
     () => colorizeTape(tm.tape as string[], tm.pos),
     [tm.tape, tm.pos],
@@ -30,7 +31,7 @@ export function TapeView({ tm }: TapeViewProps) {
           wordBreak: "break-all",
         }}
       >
-        {tm.state}
+        {stateDescriptions?.[tm.state] ?? tm.state}
       </div>
       <div
         style={{

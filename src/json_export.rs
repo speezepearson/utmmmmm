@@ -24,6 +24,9 @@ pub struct JsonTuringMachineSpec {
     /// Maps each symbol's string name to a display character.
     #[serde(rename = "symbolChars")]
     pub symbol_chars: HashMap<String, String>,
+    /// Maps each state's string name to a human-friendly description.
+    #[serde(rename = "stateDescriptions")]
+    pub state_descriptions: HashMap<String, String>,
 }
 
 pub fn export_spec<Spec: TuringMachineSpec>(
@@ -31,6 +34,7 @@ pub fn export_spec<Spec: TuringMachineSpec>(
     name: &str,
     description: &str,
     state_name: impl Fn(Spec::State) -> String,
+    state_description: impl Fn(Spec::State) -> String,
     symbol_name: impl Fn(Spec::Symbol) -> String,
     symbol_char: impl Fn(Spec::Symbol) -> char,
 ) -> JsonTuringMachineSpec
@@ -66,6 +70,11 @@ where
         .map(|s| (symbol_name(s), symbol_char(s).to_string()))
         .collect();
 
+    let state_descriptions: HashMap<String, String> = spec
+        .iter_states()
+        .map(|s| (state_name(s), state_description(s)))
+        .collect();
+
     JsonTuringMachineSpec {
         name: name.to_string(),
         description: description.to_string(),
@@ -76,5 +85,6 @@ where
         blank,
         rules,
         symbol_chars,
+        state_descriptions,
     }
 }

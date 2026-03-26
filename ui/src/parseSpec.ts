@@ -17,6 +17,7 @@ const JsonSpecSchema = z.object({
   blank: SymbolName,
   rules: z.record(State, z.record(SymbolName, RuleTriple)),
   symbolChars: z.record(z.string(), Symbol),
+  stateDescriptions: z.record(State, z.string()),
 });
 type JsonSpec = z.infer<typeof JsonSpecSchema>;
 
@@ -25,6 +26,7 @@ export type ParsedSpec = {
   description: string;
   spec: TuringMachineSpec;
   symbolChars: Record<SymbolName, Symbol>;
+  stateDescriptions: Record<State, string>;
   blank: SymbolName;
 };
 
@@ -52,6 +54,7 @@ function parseSpec(json: JsonSpec): ParsedSpec {
       rules,
     },
     symbolChars: json.symbolChars,
+    stateDescriptions: json.stateDescriptions,
     blank: json.blank,
   };
 }

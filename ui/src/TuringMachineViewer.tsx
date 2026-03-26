@@ -7,12 +7,14 @@ type TuringMachineViewerProps = {
   init: TuringMachineSnapshot;
   onStateChange?: (oldState: State, cur: TuringMachineSnapshot) => void;
   initialFps?: number;
+  stateDescriptions?: Record<string, string>;
 };
 
 export function TuringMachineViewer({
   init,
   onStateChange,
   initialFps,
+  stateDescriptions,
 }: TuringMachineViewerProps) {
   const { snapshot, status, playPause, doStep, reset } = useTuringMachine(
     init,
@@ -40,7 +42,7 @@ export function TuringMachineViewer({
         />
       </div>
 
-      <TapeView tm={snapshot} />
+      <TapeView tm={snapshot} stateDescriptions={stateDescriptions} />
 
       {halted && (
         <div className={`tm-result tm-result-${status}`}>

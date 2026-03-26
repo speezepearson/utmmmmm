@@ -43,6 +43,7 @@ export function MachineExplorer() {
         <TuringMachineViewer
           key={`${selectedIdx}-${tapeInput}`}
           init={snapshot}
+          stateDescriptions={selected.stateDescriptions}
         />
       )}
     </div>

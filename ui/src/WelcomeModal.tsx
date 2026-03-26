@@ -152,6 +152,7 @@ export function WelcomeModal() {
             key={flipBitsInput}
             init={snapshot}
             initialFps={5}
+            stateDescriptions={flipBitsSpec.stateDescriptions}
           />
         )}
 
@@ -176,6 +177,7 @@ export function WelcomeModal() {
             init={utm1Snapshot}
             onStateChange={onUtm1StateChange}
             initialFps={30}
+            stateDescriptions={utmSpec.stateDescriptions}
           />
         )}
 
@@ -191,11 +193,9 @@ export function WelcomeModal() {
             >
               Decoded from the UTM's tape:
             </p>
-            <TapeView tm={decodedFromL1} />
+            <TapeView tm={decodedFromL1} stateDescriptions={flipBitsSpec.stateDescriptions} />
           </>
         )}
-
-        <hr style={{ margin: "3em 0" }} />
 
         <p
           style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
@@ -233,6 +233,8 @@ export function WelcomeModal() {
           I find it pleasantly mesmerizing to watch.
         </p>
 
+        <hr style={{ margin: "3em 0" }} />
+
         <p
           style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
         >
@@ -246,6 +248,7 @@ export function WelcomeModal() {
               init={utm2Snapshot}
               onStateChange={onUtm2StateChange}
               initialFps={10000000}
+              stateDescriptions={utmSpec.stateDescriptions}
             />
           )}
         </div>
@@ -262,7 +265,7 @@ export function WelcomeModal() {
               >
                 Decoded (middle UTM):
               </p>
-              <TapeView tm={decodedFromL2.l1} />
+              <TapeView tm={decodedFromL2.l1} stateDescriptions={utmSpec.stateDescriptions} />
               <p
                 style={{
                   textAlign: "left",
@@ -273,9 +276,28 @@ export function WelcomeModal() {
               >
                 Decoded (bit-flipper):
               </p>
-              <TapeView tm={decodedFromL2.l0} />
+              <TapeView tm={decodedFromL2.l0} stateDescriptions={flipBitsSpec.stateDescriptions} />
             </>
           )}
+
+<p
+          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
+        >
+          Patience is a virtue.
+        </p>
+
+        <p
+          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
+        >
+          And, you know, there's no reason this ever needs to <i>stop</i>. We could construct a (infinitely long, lazily initialized) tape
+          that describes a UTM simulating a UTM simulating a UTM simulating itself simulating...
+        </p>
+
+        <p
+          style={{ textAlign: "left", marginBottom: "16px", lineHeight: "1.6" }}
+        >
+          That simulation is screaming along on some cloud machine. The fruits of its labor are being streamed to you now!
+        </p>
 
         <button
           onClick={dismiss}
@@ -291,7 +313,7 @@ export function WelcomeModal() {
             cursor: "pointer",
           }}
         >
-          Close
+          Show me the fruits
         </button>
       </div>
     </div>
