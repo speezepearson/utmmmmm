@@ -1,42 +1,15 @@
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { TuringMachineViewer } from "./TuringMachineViewer";
-import { makeInitSnapshot, Symbol } from "./types";
 import { machineSpecs } from "./parseSpec";
+import { TapeInput, useTapeInput } from "./TapeInput";
 
 export function MachineExplorer() {
   const [selectedIdx, setSelectedIdx] = useState(0);
-  const [tapeInput, setTapeInput] = useState<readonly Symbol[]>([]);
+  const [tapeInput, setTapeInput] = useState("");
 
   const selected = machineSpecs[selectedIdx];
 
-  // Non-blank display chars the user can type
-  const inputSymbolChars = useMemo(() => {
-    return Object.entries(selected.symbolChars).filter(
-      ([sym]) => sym !== selected.blank,
-    );
-  }, [selected]);
-
-  const validSymbols = useMemo(() => {
-    return new Set(selected.spec.allSymbols);
-  }, [selected]);
-
-  const invalidChars = useMemo(() => {
-    const invalid: string[] = [];
-    for (const ch of tapeInput) {
-      if (!validSymbols.has(ch) && !invalid.includes(ch)) {
-        invalid.push(ch);
-      }
-    }
-    return invalid;
-  }, [tapeInput, validSymbols]);
-
-  const snapshot = useMemo(() => {
-    if (invalidChars.length > 0) return null;
-    const { spec } = selected;
-
-
-    return makeInitSnapshot(spec, tapeInput);
-  }, [selected, tapeInput, invalidChars]);
+  const { snapshot } = useTapeInput(selected.spec, tapeInput);
 
   return (
     <div style={{ padding: "24px" }}>
@@ -49,7 +22,7 @@ export function MachineExplorer() {
             value={selectedIdx}
             onChange={(e) => {
               setSelectedIdx(Number(e.target.value));
-              setTapeInput([]);
+              setTapeInput("");
             }}
           >
             {machineSpecs.map((s, i) => (
@@ -65,45 +38,7 @@ export function MachineExplorer() {
         {selected.description}
       </p>
 
-      <p style={{ margin: "0 0 8px 0", fontSize: "0.9em" }}>
-        Tape alphabet:{" "}
-        {inputSymbolChars.map(([sym, ch]) => (
-          <code key={sym} style={{ marginRight: "8px" }}>
-            {ch}
-          </code>
-        ))}
-        <code style={{ marginRight: "8px", opacity: 0.5 }}>
-          {selected.symbolChars[selected.blank]} (blank)
-        </code>
-      </p>
-
-      <label className="tm-tape-input">
-        Tape:{" "}
-        <input
-          type="text"
-          value={tapeInput}
-          onChange={(e) => setTapeInput(Symbol.array().parse(e.target.value.split("")))}
-          placeholder={`Type using: ${inputSymbolChars.map(([, ch]) => ch).join("")}`}
-          spellCheck={false}
-        />
-      </label>
-
-      {invalidChars.length > 0 && (
-        <p style={{ color: "red", margin: "8px 0" }}>
-          Invalid character{invalidChars.length > 1 ? "s" : ""}:{" "}
-          {invalidChars.map((ch) => (
-            <code key={ch} style={{ marginRight: "4px" }}>
-              {ch}
-            </code>
-          ))}
-          — allowed:{" "}
-          {selected.spec.allSymbols.map((s) => (
-            <code key={s} style={{ marginRight: "4px" }}>
-              {s}
-            </code>
-          ))}
-        </p>
-      )}
+      <TapeInput parsed={selected} value={tapeInput} onChange={setTapeInput} />
       {snapshot && (
         <TuringMachineViewer
           key={`${selectedIdx}-${tapeInput}`}
