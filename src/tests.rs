@@ -1,4 +1,4 @@
-use crate::infinity::HEADER;
+use crate::gen_utm::UtmSpec as _;
 use crate::tm::{
     run_tm, run_until_enters_state, HaltReason, RunUntilResult, RunningTuringMachine,
     TuringMachineSpec,
@@ -45,7 +45,7 @@ fn run_via_utm<'a, Guest: TuringMachineSpec>(
         input.to_vec()
     };
 
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
+    let encoded = utm.encode(&guest_tm);
     let mut utm_tm = RunningTuringMachine::new(utm);
     utm_tm.tape = encoded;
 
@@ -56,7 +56,8 @@ fn run_via_utm<'a, Guest: TuringMachineSpec>(
         Err(_) => "limit",
     };
 
-    let decoded = MyUtmEncodingScheme::decode(guest, &utm_tm.tape)
+    let decoded = utm
+        .decode(guest, &utm_tm.tape)
         .expect("should be able to decode UTM tape");
 
     (status.to_string(), decoded)
@@ -81,6 +82,7 @@ fn assert_faithful<Spec: TuringMachineSpec + std::fmt::Debug>(
     Spec::State: std::fmt::Debug,
     Spec::Symbol: std::fmt::Debug,
 {
+    let utm = &*UTM_SPEC;
     // Run directly
     let mut direct_tm = RunningTuringMachine {
         spec: guest_tm.spec,
@@ -96,7 +98,7 @@ fn assert_faithful<Spec: TuringMachineSpec + std::fmt::Debug>(
     };
 
     // Run via UTM
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
+    let encoded = utm.encode(&guest_tm);
     let utm = &*UTM_SPEC;
     let mut utm_tm = RunningTuringMachine::new(utm);
     utm_tm.tape = encoded;
@@ -114,7 +116,8 @@ fn assert_faithful<Spec: TuringMachineSpec + std::fmt::Debug>(
         direct_status, utm_status
     );
 
-    let mut decoded = MyUtmEncodingScheme::decode(guest_tm.spec, &utm_tm.tape)
+    let mut decoded = utm
+        .decode(guest_tm.spec, &utm_tm.tape)
         .expect("should decode UTM tape after halting");
 
     strip_trailing_blanks(&mut direct_tm);
@@ -142,8 +145,8 @@ fn test_flip_bits_direct() {
 
 #[test]
 fn test_palindrome_direct() {
-    use CheckPalindromeSymbol::*;
     use crate::toy_machines::Letter::*;
+    use CheckPalindromeSymbol::*;
     let spec = &*CHECK_PALINDROME_SPEC;
 
     let (status, _) = run_guest_direct(spec, &[Letter(A), Letter(A)], 1000);
@@ -152,7 +155,7 @@ fn test_palindrome_direct() {
     let (status, _) = run_guest_direct(spec, &[Letter(A), Letter(B)], 1000);
     assert_eq!(status, "reject");
 
-    let (status, _) = run_guest_direct(spec, &[Letter(A), Letter(B), Letter(A)  ], 1000);
+    let (status, _) = run_guest_direct(spec, &[Letter(A), Letter(B), Letter(A)], 1000);
     assert_eq!(status, "accept");
 
     let (status, _) = run_guest_direct(spec, &[], 1000);
@@ -193,8 +196,9 @@ fn test_encode_decode_roundtrip_flip_bits() {
     let mut guest_tm = RunningTuringMachine::new(spec);
     guest_tm.tape = vec![Zero, One];
 
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
-    let decoded = MyUtmEncodingScheme::decode(spec, &encoded).unwrap();
+    let utm = &*UTM_SPEC;
+    let encoded = utm.encode(&guest_tm);
+    let decoded = utm.decode(spec, &encoded).unwrap();
     assert_eq!(decoded.state, guest_tm.state);
     assert_eq!(decoded.pos, 0);
     assert_eq!(decoded.tape, vec![Zero, One]);
@@ -206,8 +210,9 @@ fn test_encode_decode_roundtrip_empty() {
     let mut guest_tm = RunningTuringMachine::new(spec);
     guest_tm.tape = vec![spec.blank()];
 
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
-    let decoded = MyUtmEncodingScheme::decode(spec, &encoded).unwrap();
+    let utm = &*UTM_SPEC;
+    let encoded = utm.encode(&guest_tm);
+    let decoded = utm.decode(spec, &encoded).unwrap();
     assert_eq!(decoded.state, spec.initial());
     assert_eq!(decoded.pos, 0);
     assert_eq!(decoded.tape, vec![spec.blank()]);
@@ -215,14 +220,15 @@ fn test_encode_decode_roundtrip_empty() {
 
 #[test]
 fn test_encode_decode_roundtrip_palindrome() {
-    use CheckPalindromeSymbol::*;
     use crate::toy_machines::Letter::*;
+    use CheckPalindromeSymbol::*;
     let spec = &*CHECK_PALINDROME_SPEC;
     let mut guest_tm = RunningTuringMachine::new(spec);
     guest_tm.tape = vec![Letter(A), Letter(B), Letter(A)];
 
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
-    let decoded = MyUtmEncodingScheme::decode(spec, &encoded).unwrap();
+    let utm = &*UTM_SPEC;
+    let encoded = utm.encode(&guest_tm);
+    let decoded = utm.decode(spec, &encoded).unwrap();
     assert_eq!(decoded.state, CheckPalindromeState::Start);
     assert_eq!(decoded.pos, 0);
     assert_eq!(decoded.tape, vec![Letter(A), Letter(B), Letter(A)]);
@@ -275,99 +281,6 @@ fn test_utm_double_x() {
     assert_eq!(tm.tape[2], X);
     assert_eq!(tm.tape[3], X);
     assert_eq!(tm.tape[4], X);
-}
-
-// ════════════════════════════════════════════════════════════════════
-// Tests: Infinite UTM tape
-// ════════════════════════════════════════════════════════════════════
-
-#[test]
-fn test_infinite_tape_initial() {
-    let inf = crate::infinity::InfiniteTape::new();
-
-    let mut tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut tape, 100);
-    assert_eq!(tape[0], Symbol::Dollar);
-    assert!(
-        tape.len() >= 100,
-        "tape should be at least 100 symbols: got {}",
-        tape.len()
-    );
-}
-
-#[test]
-fn test_infinite_tape_self_similar() {
-    let inf = crate::infinity::InfiniteTape::new();
-    use crate::optimization_hints::OPTIMIZATION_HINTS;
-
-    let mut outer_tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut outer_tape, 100_000);
-
-    let utm = &*UTM_SPEC;
-    // Decode the outer tape to get the inner (guest) TM state.
-    // The guest is also a UTM, and its tape contains guest-level symbols.
-    let decoded =
-        MyUtmEncodingScheme::decode(utm, &outer_tape).expect("should decode the infinite UTM tape");
-
-    // Re-encode the decoded guest TM back into a UTM tape.
-    // Must use the same rule order as the infinite extender (which uses OPTIMIZATION_HINTS).
-    let mut re_encoded =
-        MyUtmEncodingScheme::encode_with_rule_order(&decoded, Some(OPTIMIZATION_HINTS));
-    inf.extend(&mut re_encoded, 100_000);
-
-    assert_eq!(
-        re_encoded[..100_000],
-        outer_tape[..100_000],
-        "re-encoded inner tape should equal the outer tape"
-    );
-}
-
-#[test]
-fn test_decoded_tape_no_leading_blanks() {
-    let inf = crate::infinity::InfiniteTape::new();
-
-    let utm = &*UTM_SPEC;
-
-    // Build the infinite UTM tape and decode it
-    let mut outer_tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut outer_tape, 100_000);
-
-    let decoded =
-        MyUtmEncodingScheme::decode(utm, &outer_tape).expect("should decode the infinite UTM tape");
-
-    // The decoded tape is the guest UTM's tape. Since the guest is a fresh UTM
-    // simulating itself, its tape should start with $, not blanks.
-    assert_eq!(
-        decoded.tape[0],
-        Symbol::Dollar,
-        "decoded tape should start with $, not {:?}",
-        decoded.tape[0]
-    );
-}
-
-/// Regression: MIN_DISPLAY_TAPE_LEN = 10_000 was too small to contain the full
-/// UTM header (which has 5 # delimiters). Decoding a tape of only 10k symbols
-/// failed with "expected at least 5 # delimiters, found 1".
-#[test]
-fn test_decode_needs_more_than_10k_symbols() {
-    let inf = crate::infinity::InfiniteTape::new();
-    let header_len = HEADER.len();
-
-    let utm = &*UTM_SPEC;
-
-    // 10k is NOT enough — the header alone is larger than that.
-    let mut small_tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut small_tape, header_len / 2);
-    assert!(
-        MyUtmEncodingScheme::decode(utm, &small_tape).is_err(),
-        "10k symbols should NOT be enough to decode (header_len = {})",
-        header_len,
-    );
-
-    // header_len + 1000 IS enough.
-    let mut big_tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut big_tape, header_len + 1_000);
-    MyUtmEncodingScheme::decode(utm, &big_tape).expect("should be able to decode a long tape");
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -424,9 +337,9 @@ fn test_faithful_utm_running_accept_immediately() {
     let inner_tm = RunningTuringMachine::new(acc_spec);
 
     // Encode the inner TM into a UTM tape
-    let encoded_inner = MyUtmEncodingScheme::encode(&inner_tm);
-
     let utm = &*UTM_SPEC;
+    let encoded_inner = utm.encode(&inner_tm);
+
     let mut utm_tm = RunningTuringMachine::new(utm);
     utm_tm.tape = encoded_inner;
 
@@ -448,8 +361,9 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
     tm.tape = vec![Zero, One, Zero];
 
     // Put one specific rule last
+    let utm = &*UTM_SPEC;
     let last_rules = vec![(FlipBitsState::Flip, Zero)];
-    let encoded = MyUtmEncodingScheme::encode_with_rule_order(&tm, Some(&last_rules));
+    let encoded = utm.encode_with_rule_order(&tm, Some(&last_rules));
 
     // Run directly
     let mut direct_tm = RunningTuringMachine {
@@ -461,7 +375,6 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
     let direct_result = run_tm(&mut direct_tm, 100, None).unwrap();
 
     // Run via UTM with reordered encoding
-    let utm = &*UTM_SPEC;
     let mut utm_tm = RunningTuringMachine::new(utm);
     utm_tm.tape = encoded;
     let utm_result = run_tm(&mut utm_tm, 10_000_000, None).unwrap();
@@ -473,7 +386,9 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
         "halt status should match"
     );
 
-    let decoded = MyUtmEncodingScheme::decode(spec, &utm_tm.tape).expect("should decode UTM tape");
+    let decoded = utm
+        .decode(spec, &utm_tm.tape)
+        .expect("should decode UTM tape");
     strip_trailing_blanks(&mut direct_tm);
     let mut decoded_stripped = decoded;
     strip_trailing_blanks(&mut decoded_stripped);
@@ -487,8 +402,9 @@ fn test_encode_with_none_same_as_encode() {
     let mut tm = RunningTuringMachine::new(spec);
     tm.tape = vec![Zero, One];
 
-    let plain = MyUtmEncodingScheme::encode(&tm);
-    let with_none = MyUtmEncodingScheme::encode_with_rule_order(&tm, None);
+    let utm = &*UTM_SPEC;
+    let plain = utm.encode(&tm);
+    let with_none = utm.encode_with_rule_order(&tm, None);
     assert_eq!(plain, with_none);
 }
 
@@ -512,11 +428,11 @@ fn bench_compiled_vs_interpreted() {
     // Build utm(encode(utm(encode(accept_immediately))))
     let acc_spec = &*ACCEPT_IMMEDIATELY_SPEC;
     let inner_tm = RunningTuringMachine::new(acc_spec);
-    let inner_encoded = MyUtmEncodingScheme::encode(&inner_tm);
+    let inner_encoded = utm.encode(&inner_tm);
 
     let mut mid_tm = RunningTuringMachine::new(utm);
     mid_tm.tape = inner_encoded;
-    let outer_encoded = MyUtmEncodingScheme::encode(&mid_tm);
+    let outer_encoded = utm.encode(&mid_tm);
 
     // Helper: convert Symbol tape to CSymbol tape
     let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
@@ -678,10 +594,7 @@ fn bench_rule_order_optimization() {
     // Helper: build a compiled TM running the infinite UTM tape with given rule order
     let build_tm = |last_rules: Option<&[(State, Symbol)]>| {
         // Compute the header with the given rule order
-        let header_tape = MyUtmEncodingScheme::encode_with_rule_order(
-            &RunningTuringMachine::new(utm),
-            last_rules,
-        );
+        let header_tape = utm.encode_with_rule_order(&RunningTuringMachine::new(utm), last_rules);
         let caret_pos = header_tape
             .iter()
             .position(|&s| s == Symbol::Caret)

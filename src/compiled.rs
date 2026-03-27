@@ -199,7 +199,7 @@ mod tests {
 
         let utm = &*UTM_SPEC;
         let compiled = CompiledTuringMachineSpec::compile(utm).unwrap();
-        let background = InfiniteTape::new();
+        let background = InfiniteTape::new(utm);
 
         // Interpreted: run 1000 steps with InfiniteTape
         let mut interp_tm = RunningTuringMachine::new(utm);

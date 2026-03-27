@@ -46,7 +46,7 @@ pub static REJECT_IMMEDIATELY_SPEC: LazyLock<SimpleTuringMachineSpec<RejImmState
     });
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub     enum Letter {
+pub enum Letter {
     A,
     B,
     C,
@@ -139,7 +139,10 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
     for letter in all_letters() {
         transitions.insert((SeekR(letter), Blank), (Check(letter), Blank, Dir::Left));
         for l2 in all_letters() {
-            transitions.insert((SeekR(letter), Letter(l2)), (SeekR(letter), Letter(l2), Dir::Right));
+            transitions.insert(
+                (SeekR(letter), Letter(l2)),
+                (SeekR(letter), Letter(l2), Dir::Right),
+            );
         }
     }
 
@@ -162,9 +165,9 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
         transitions: HashMap::from(transitions),
         all_states: {
             let mut v = vec![
-            CheckPalindromeState::Start,
-            CheckPalindromeState::Accept,
-            CheckPalindromeState::SeekL,
+                CheckPalindromeState::Start,
+                CheckPalindromeState::Accept,
+                CheckPalindromeState::SeekL,
             ];
             for letter in all_letters() {
                 v.push(CheckPalindromeState::SeekR(letter));
@@ -173,9 +176,7 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
             v
         },
         all_symbols: {
-            let mut v = vec![
-            CheckPalindromeSymbol::Blank,
-            ];
+            let mut v = vec![CheckPalindromeSymbol::Blank];
             for letter in all_letters() {
                 v.push(CheckPalindromeSymbol::Letter(letter));
             }

@@ -1,62 +1,29 @@
 // ════════════════════════════════════════════════════════════════════
 // Infinite UTM tape: encode a UTM simulating itself (fixed point)
-//
-// The tape is: HEADER ^cell0 ,cell1 ,cell2 ...
-// where cell_k encodes tape[k]. Since the guest is the UTM itself,
-// tape[k] for k < |HEADER| is the k-th header symbol, and for
-// k >= |HEADER| it's a tape-section symbol (marker or bit).
-// Each cell_k only depends on tape[k] which is already computed
-// (since k < HEADER_LEN + k * CELL_WIDTH), so this is a well-defined
-// fixed point we can compute left-to-right.
 // ════════════════════════════════════════════════════════════════════
 
-use std::{cell::RefCell, collections::HashMap, sync::LazyLock};
+use std::{cell::RefCell,};
 
 use crate::{
-    compiled::{CSymbol, CompiledTuringMachineSpec},
-    optimization_hints::OPTIMIZATION_HINTS,
-    tm::{RunningTuringMachine, SimpleTuringMachineSpec, TuringMachineSpec},
-    utm::{num_bits, MyUtmEncodingScheme, State, Symbol, UTM_SPEC},
+    compiled::{CSymbol, CompiledTuringMachineSpec}, gen_utm::UtmSpec as _, tm::{RunningTuringMachine, SimpleTuringMachineSpec}, utm::{MyUtmSpec, State, Symbol}
 };
 
-/// The header: everything before the tape section ($ # rules # acc # state # blank #).
-pub static HEADER: LazyLock<Vec<Symbol>> = LazyLock::new(|| {
-    let dummy = MyUtmEncodingScheme::encode_with_rule_order(
-        &RunningTuringMachine::new(&*UTM_SPEC),
-        Some(OPTIMIZATION_HINTS),
-    );
-    let caret_pos = dummy
-        .iter()
-        .position(|&s| s == Symbol::Caret)
-        .expect("encoded tape should contain ^");
-    dummy[..caret_pos].to_vec()
-});
-
-static GUEST_SYM_TO_IDX: LazyLock<HashMap<Symbol, usize>> = LazyLock::new(|| {
-    UTM_SPEC
-        .iter_symbols()
-        .enumerate()
-        .map(|(i, s)| (s, i))
-        .collect()
-});
-
-static N_SYM_BITS: LazyLock<usize> = LazyLock::new(|| num_bits(UTM_SPEC.iter_symbols().count()));
-
-/// The length of the UTM header (everything before the `^` in the encoded tape).
-pub fn header_len() -> usize {
-    HEADER.len()
+pub struct InfiniteTape<'a> {
+    spec: &'a MyUtmSpec,
+    realized: RefCell<Vec<Symbol>>,
 }
 
-pub struct InfiniteTape(RefCell<Vec<Symbol>>);
-
-impl InfiniteTape {
-    pub fn new() -> Self {
-        Self(RefCell::new(Vec::new()))
+impl<'a> InfiniteTape<'a> {
+    pub fn new(spec: &'a MyUtmSpec) -> Self {
+        Self {
+            spec,
+            realized: RefCell::new(Vec::new()),
+        }
     }
 
     pub fn get(&self, index: usize) -> Symbol {
         self.extend_to(index);
-        self.0.borrow()[index]
+        self.realized.borrow()[index]
     }
 
     pub fn iter_forever(&self) -> impl Iterator<Item = Symbol> + '_ {
@@ -68,7 +35,7 @@ impl InfiniteTape {
             return;
         }
         self.extend_to(index);
-        let cache = self.0.borrow();
+        let cache = self.realized.borrow();
         dst.extend_from_slice(&cache[dst.len()..index]);
     }
 
@@ -82,7 +49,7 @@ impl InfiniteTape {
             return;
         }
         self.extend_to(index);
-        let cache = self.0.borrow();
+        let cache = self.realized.borrow();
         dst.extend(
             cache[dst.len()..index]
                 .iter()
@@ -91,43 +58,35 @@ impl InfiniteTape {
     }
 
     fn extend_to(&self, index: usize) {
-        let mut cache = self.0.borrow_mut();
-        if index < cache.len() {
-            return;
+        while index >= self.realized.borrow().len() {
+            let mut rtm = RunningTuringMachine::new(self.spec);
+            rtm.tape = self.realized.take();
+            self.realized.replace(self.spec.encode(&rtm));
         }
 
-        let header = &*HEADER;
-        let sym_to_idx = &*GUEST_SYM_TO_IDX;
-        let n_sym_bits = *N_SYM_BITS;
-        let cell_width = 1 + n_sym_bits; // marker + bits
-        let header_len = header.len();
+    }
+}
 
-        while cache.len() <= index {
-            let pos = cache.len();
-            if pos < header_len {
-                cache.push(header[pos]);
-            } else {
-                let offset = pos - header_len;
-                if offset % cell_width == 0 {
-                    // Marker position
-                    let cell_index = offset / cell_width;
-                    cache.push(if cell_index == 0 {
-                        Symbol::Caret
-                    } else {
-                        Symbol::Comma
-                    });
-                } else {
-                    // Bit position: encode self.0[cell_index]
-                    let cell_index = offset / cell_width;
-                    let bit_offset = offset % cell_width - 1;
+#[cfg(test)]
+mod tests {
+    use crate::utm::UTM_SPEC;
 
-                    let sym = cache[cell_index]; // always available: cell_index < pos
-                    let sym_idx = sym_to_idx[&sym];
-                    let bit = (sym_idx >> (n_sym_bits - 1 - bit_offset)) & 1;
-                    cache
-                        .push(if bit == 1 { Symbol::One } else { Symbol::Zero });
-                }
-            }
-        }
+    use super::*;
+
+    #[test]
+    fn test_is_self_similar() {
+        let spec = &*UTM_SPEC;
+        let inf = InfiniteTape::new(spec);
+
+        let header_len = spec.encode(&RunningTuringMachine::new(spec)).len() + 10;
+
+        let mut l0_tape = vec![];
+        inf.extend(&mut l0_tape, 200 * header_len);
+        let l1 = spec.decode(spec, &l0_tape).unwrap();
+        assert_eq!(l1.tape[..header_len], l0_tape[..header_len]);
+        let l2 = spec.decode(spec, &l1.tape).unwrap();
+        assert_eq!(l2.tape[..header_len], l1.tape[..header_len]);
+        let l3 = spec.decode(spec, &l2.tape).unwrap();
+        assert_eq!(l3.tape[..header_len], l2.tape[..header_len]);
     }
 }

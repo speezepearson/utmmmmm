@@ -8,7 +8,7 @@ fn main() {
     let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
 
     let mut tm = RunningTuringMachine::new(&compiled);
-    let background = InfiniteTape::new();
+    let background = InfiniteTape::new(utm);
 
     // Snapshot the original tape for dirty-cell counting
     let mut original_tape = tm.tape.clone();

@@ -7,7 +7,7 @@ use crate::delta::current_overwrites;
 use crate::infinity::InfiniteTape;
 use crate::tm::RunningTuringMachine;
 use crate::tower::{CompiledUtmSpec, Tower, TowerLevel};
-use crate::utm::{State, Symbol};
+use crate::utm::{MyUtmSpec, State, Symbol};
 
 #[derive(Serialize, Deserialize)]
 pub struct Snapshot {
@@ -63,6 +63,7 @@ pub fn save_savepoint(path: &str, tower: &Tower<'_>, background: &InfiniteTape) 
 }
 
 pub fn load_savepoint<'a>(
+    utm_spec: &'a MyUtmSpec,
     path: &str,
     spec: &'a CompiledUtmSpec<'a>,
     background: &InfiniteTape,
@@ -74,7 +75,7 @@ pub fn load_savepoint<'a>(
         .split_first()
         .expect("savepoint should have at least one level");
 
-    let mut tower = Tower::new(RunningTuringMachine::new(spec));
+    let mut tower = Tower::new(utm_spec, RunningTuringMachine::new(spec));
 
     tower.base = TowerLevel {
         total_steps: snap_base.steps,

@@ -15,7 +15,7 @@ use utmmmmm::savepoint::{
 };
 use utmmmmm::tm::{RunningTMStatus, RunningTuringMachine, TuringMachineSpec};
 use utmmmmm::tower::Tower;
-use utmmmmm::utm::{State, Symbol, UTM_SPEC};
+use utmmmmm::utm::{MyUtmSpec, State, Symbol, UTM_SPEC};
 
 // ── Snapshot: shared between tower thread and SSE client threads ──
 
@@ -42,11 +42,7 @@ struct DeltaEventJson {
     levels: Vec<TowerLevelJson>,
 }
 
-fn patch_snapshot(
-    dst: &mut Snapshot,
-    tower: &Tower,
-    background: &InfiniteTape,
-) -> DeltaEventJson {
+fn patch_snapshot(dst: &mut Snapshot, tower: &Tower, background: &InfiniteTape) -> DeltaEventJson {
     let new = build_snapshot(tower, background);
     DeltaEventJson {
         event_type: "delta",
@@ -94,18 +90,18 @@ fn publish(event: DeltaEventJson, sse_clients: &Mutex<Vec<SseClient>>) {
 // ── Main simulation thread ──
 
 fn sim_thread(
+    spec: &MyUtmSpec,
     latest: Arc<RwLock<Option<Snapshot>>>,
     sse_clients: SseClients,
     savepoint_path: Option<String>,
 ) {
-    let background = InfiniteTape::new();
-    let utm = &*UTM_SPEC;
-    let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
+    let background = InfiniteTape::new(spec);
+    let compiled = CompiledTuringMachineSpec::compile(spec).expect("UTM should compile");
 
-    let mut tower = Tower::new(RunningTuringMachine::new(&compiled));
+    let mut tower = Tower::new(spec, RunningTuringMachine::new(&compiled));
 
     if let Some(ref sp_path) = savepoint_path {
-        if let Some(t) = load_savepoint(sp_path, &compiled, &background) {
+        if let Some(t) = load_savepoint(spec, sp_path, &compiled, &background) {
             tower = t;
         }
     }
@@ -265,12 +261,14 @@ fn main() {
         .and_then(|s| s.parse::<u16>().ok())
         .unwrap_or(8080);
 
+    let spec = &*UTM_SPEC;
+
     // Pre-compute the unblemished infinite tape (1M symbols)
     // TODO: we should technically dynamically send updates to the clients,
     // as though the tape will ever get to 1M symbols
     let unblemished_str: Arc<String> = {
         let mut syms: Vec<Symbol> = Vec::new();
-        InfiniteTape::new().extend(&mut syms, 1_000_000);
+        InfiniteTape::new(spec).extend(&mut syms, 1_000_000);
         Arc::new(syms.iter().map(|s| format!("{}", s)).collect())
     };
 
@@ -287,7 +285,7 @@ fn main() {
     // Start simulation background thread
     let latest_clone = Arc::clone(&latest);
     let sse_clone = Arc::clone(&sse_clients);
-    thread::spawn(move || sim_thread(latest_clone, sse_clone, savepoint_path));
+    thread::spawn(move || sim_thread(spec, latest_clone, sse_clone, savepoint_path));
 
     let addr = format!("0.0.0.0:{}", port);
     let server = Server::http(&addr).expect("Failed to start HTTP server");
