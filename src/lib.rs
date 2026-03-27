@@ -1,3 +1,4 @@
+pub mod code_assignment;
 pub mod compiled;
 pub mod delta;
 pub mod infinity;

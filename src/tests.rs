@@ -318,13 +318,23 @@ fn test_infinite_tape_self_similar() {
     let utm = &*UTM_SPEC;
     // Decode the outer tape to get the inner (guest) TM state.
     // The guest is also a UTM, and its tape contains guest-level symbols.
-    let decoded =
-        MyUtmEncodingScheme::decode(utm, &outer_tape).expect("should decode the infinite UTM tape");
+    let decoded = MyUtmEncodingScheme::decode_with_orders(
+        utm,
+        &outer_tape,
+        Some(&*crate::infinity::STATE_ORDER),
+        Some(&*crate::infinity::SYMBOL_ORDER),
+    )
+    .expect("should decode the infinite UTM tape");
 
     // Re-encode the decoded guest TM back into a UTM tape.
     // Must use the same rule order as the infinite extender (which uses OPTIMIZATION_HINTS).
     let mut re_encoded =
-        MyUtmEncodingScheme::encode_with_rule_order(&decoded, Some(OPTIMIZATION_HINTS));
+        MyUtmEncodingScheme::encode_with_rule_order(
+            &decoded,
+            Some(OPTIMIZATION_HINTS),
+            Some(&*crate::infinity::STATE_ORDER),
+            Some(&*crate::infinity::SYMBOL_ORDER),
+        );
     inf.extend(&mut re_encoded, 100_000);
 
     assert_eq!(
@@ -344,8 +354,13 @@ fn test_decoded_tape_no_leading_blanks() {
     let mut outer_tape: Vec<Symbol> = Vec::new();
     inf.extend(&mut outer_tape, 100_000);
 
-    let decoded =
-        MyUtmEncodingScheme::decode(utm, &outer_tape).expect("should decode the infinite UTM tape");
+    let decoded = MyUtmEncodingScheme::decode_with_orders(
+        utm,
+        &outer_tape,
+        Some(&*crate::infinity::STATE_ORDER),
+        Some(&*crate::infinity::SYMBOL_ORDER),
+    )
+    .expect("should decode the infinite UTM tape");
 
     // The decoded tape is the guest UTM's tape. Since the guest is a fresh UTM
     // simulating itself, its tape should start with $, not blanks.
@@ -371,7 +386,13 @@ fn test_decode_needs_more_than_10k_symbols() {
     let mut small_tape: Vec<Symbol> = Vec::new();
     inf.extend(&mut small_tape, header_len / 2);
     assert!(
-        MyUtmEncodingScheme::decode(utm, &small_tape).is_err(),
+        MyUtmEncodingScheme::decode_with_orders(
+            utm,
+            &small_tape,
+            Some(&*crate::infinity::STATE_ORDER),
+            Some(&*crate::infinity::SYMBOL_ORDER),
+        )
+        .is_err(),
         "10k symbols should NOT be enough to decode (header_len = {})",
         header_len,
     );
@@ -379,7 +400,13 @@ fn test_decode_needs_more_than_10k_symbols() {
     // header_len + 1000 IS enough.
     let mut big_tape: Vec<Symbol> = Vec::new();
     inf.extend(&mut big_tape, header_len + 1_000);
-    MyUtmEncodingScheme::decode(utm, &big_tape).expect("should be able to decode a long tape");
+    MyUtmEncodingScheme::decode_with_orders(
+        utm,
+        &big_tape,
+        Some(&*crate::infinity::STATE_ORDER),
+        Some(&*crate::infinity::SYMBOL_ORDER),
+    )
+    .expect("should be able to decode a long tape");
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -487,7 +514,7 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
 
     // Put one specific rule last
     let last_rules = vec![(FlipBitsState::Flip, Zero)];
-    let encoded = MyUtmEncodingScheme::encode_with_rule_order(&tm, Some(&last_rules));
+    let encoded = MyUtmEncodingScheme::encode_with_rule_order(&tm, Some(&last_rules), None, None);
 
     // Run directly
     let mut direct_tm = RunningTuringMachine {
@@ -530,7 +557,7 @@ fn test_encode_with_last_rules_faithful_palindrome() {
         (CheckPalindromeState::SeekRA, A),
         (CheckPalindromeState::SeekRA, B),
     ];
-    let encoded = MyUtmEncodingScheme::encode_with_rule_order(&tm, Some(&last_rules));
+    let encoded = MyUtmEncodingScheme::encode_with_rule_order(&tm, Some(&last_rules), None, None);
 
     let mut direct_tm = RunningTuringMachine {
         spec: tm.spec,
@@ -565,7 +592,7 @@ fn test_encode_with_none_same_as_encode() {
     tm.tape = vec![Zero, One];
 
     let plain = MyUtmEncodingScheme::encode(&tm);
-    let with_none = MyUtmEncodingScheme::encode_with_rule_order(&tm, None);
+    let with_none = MyUtmEncodingScheme::encode_with_rule_order(&tm, None, None, None);
     assert_eq!(plain, with_none);
 }
 
@@ -758,6 +785,8 @@ fn bench_rule_order_optimization() {
         let header_tape = MyUtmEncodingScheme::encode_with_rule_order(
             &RunningTuringMachine::new(utm),
             last_rules,
+            None,
+            None,
         );
         let caret_pos = header_tape
             .iter()

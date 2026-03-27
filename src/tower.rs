@@ -66,8 +66,13 @@ impl<'a> Tower<'a> {
         let new_level = TowerLevel {
             total_steps: 0,
             max_head_pos: 0,
-            tm: MyUtmEncodingScheme::decode(&*UTM_SPEC, &cur.tape)
-                .expect("it should always be okay to decode a utm that just entered Init"),
+            tm: MyUtmEncodingScheme::decode_with_orders(
+                &*UTM_SPEC,
+                &cur.tape,
+                Some(&*crate::infinity::STATE_ORDER),
+                Some(&*crate::infinity::SYMBOL_ORDER),
+            )
+            .expect("it should always be okay to decode a utm that just entered Init"),
         };
         self.decoded.push(new_level);
 
@@ -76,8 +81,13 @@ impl<'a> Tower<'a> {
 }
 
 fn decode_into_level<'a>(tm: &UtmTm<'a>, dst: &mut UtmTowerLevel<'a>) -> bool {
-    let decoded = MyUtmEncodingScheme::decode(&*UTM_SPEC, &tm.tape)
-        .expect("it should always be okay to decode a utm that just entered Init");
+    let decoded = MyUtmEncodingScheme::decode_with_orders(
+        &*UTM_SPEC,
+        &tm.tape,
+        Some(&*crate::infinity::STATE_ORDER),
+        Some(&*crate::infinity::SYMBOL_ORDER),
+    )
+    .expect("it should always be okay to decode a utm that just entered Init");
     let old_state = dst.tm.state;
     let new_state = decoded.state;
     dst.total_steps += 1;

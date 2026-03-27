@@ -13,17 +13,32 @@
 use std::{cell::RefCell, collections::HashMap, sync::LazyLock};
 
 use crate::{
+    code_assignment::compute_optimal_orders,
     compiled::{CSymbol, CompiledTuringMachineSpec},
     optimization_hints::OPTIMIZATION_HINTS,
     tm::{RunningTuringMachine, SimpleTuringMachineSpec, TuringMachineSpec},
     utm::{num_bits, MyUtmEncodingScheme, State, Symbol, UTM_SPEC},
 };
 
+/// Optimized state ordering for binary encoding (computed from rule order + confusion weights).
+pub static STATE_ORDER: LazyLock<Vec<State>> = LazyLock::new(|| {
+    let (state_order, _) = compute_optimal_orders(&*UTM_SPEC, OPTIMIZATION_HINTS);
+    state_order
+});
+
+/// Optimized symbol ordering for binary encoding.
+pub static SYMBOL_ORDER: LazyLock<Vec<Symbol>> = LazyLock::new(|| {
+    let (_, symbol_order) = compute_optimal_orders(&*UTM_SPEC, OPTIMIZATION_HINTS);
+    symbol_order
+});
+
 /// The header: everything before the tape section ($ # rules # acc # state # blank #).
 pub static HEADER: LazyLock<Vec<Symbol>> = LazyLock::new(|| {
     let dummy = MyUtmEncodingScheme::encode_with_rule_order(
         &RunningTuringMachine::new(&*UTM_SPEC),
         Some(OPTIMIZATION_HINTS),
+        Some(&*STATE_ORDER),
+        Some(&*SYMBOL_ORDER),
     );
     let caret_pos = dummy
         .iter()
@@ -33,10 +48,10 @@ pub static HEADER: LazyLock<Vec<Symbol>> = LazyLock::new(|| {
 });
 
 static GUEST_SYM_TO_IDX: LazyLock<HashMap<Symbol, usize>> = LazyLock::new(|| {
-    UTM_SPEC
-        .iter_symbols()
+    SYMBOL_ORDER
+        .iter()
         .enumerate()
-        .map(|(i, s)| (s, i))
+        .map(|(i, &s)| (s, i))
         .collect()
 });
 

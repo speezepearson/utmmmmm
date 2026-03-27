@@ -484,7 +484,7 @@ impl UtmEncodingScheme for MyUtmEncodingScheme {
     /// BLANK: blank symbol bits
     /// TAPE: comma-separated cells, head cell prefixed with ^
     fn encode<Guest: TuringMachineSpec>(guest: &RunningTuringMachine<Guest>) -> Vec<Self::Symbol> {
-        Self::encode_with_rule_order(guest, None)
+        Self::encode_with_rule_order(guest, None, None, None)
     }
 
     // ════════════════════════════════════════════════════════════════════
@@ -564,6 +564,79 @@ impl UtmEncodingScheme for MyUtmEncodingScheme {
 }
 
 impl MyUtmEncodingScheme {
+    /// Decode with custom state/symbol orderings (must match the orderings used to encode).
+    pub fn decode_with_orders<'a, Guest: TuringMachineSpec>(
+        guest: &'a Guest,
+        tape: &[Symbol],
+        state_order: Option<&[Guest::State]>,
+        symbol_order: Option<&[Guest::Symbol]>,
+    ) -> Result<RunningTuringMachine<'a, Guest>, String> {
+        let default_states: Vec<Guest::State> = guest.iter_states().collect();
+        let default_symbols: Vec<Guest::Symbol> = guest.iter_symbols().collect();
+        let guest_states = state_order.unwrap_or(&default_states);
+        let guest_symbols = symbol_order.unwrap_or(&default_symbols);
+
+        let n_state_bits = num_bits(guest_states.len());
+        let n_sym_bits = num_bits(guest_symbols.len());
+
+        let mut hashes: Vec<usize> = Vec::new();
+        for (i, &s) in tape.iter().enumerate() {
+            if s == Symbol::Hash {
+                hashes.push(i);
+            }
+        }
+
+        if hashes.len() < 5 {
+            return Err(format!(
+                "expected at least 5 # delimiters, found {}",
+                hashes.len()
+            ));
+        }
+
+        let state_start = hashes[2] + 1;
+        let state = guest_states[from_binary_at(tape, state_start, n_state_bits)];
+
+        let tape_start = hashes[4] + 1;
+        let tape_end = tape.len();
+
+        let tape_section = &tape[tape_start..tape_end];
+        let mut cells: Vec<usize> = Vec::new();
+        let mut head_pos: usize = 0;
+        let mut i = 0;
+        let mut cell_idx = 0;
+        while i < tape_section.len() {
+            let s = tape_section[i];
+            if s == Symbol::Blank || s == Symbol::Dollar {
+                break;
+            }
+            if s == Symbol::Comma {
+                i += 1;
+                cell_idx += 1;
+                continue;
+            }
+            if s == Symbol::Caret || s == Symbol::Gt {
+                if s == Symbol::Caret {
+                    head_pos = cell_idx;
+                }
+                i += 1;
+                continue;
+            }
+            if i + n_sym_bits > tape_section.len() {
+                break;
+            }
+            let val = from_binary_at(tape_section, i, n_sym_bits);
+            cells.push(val);
+            i += n_sym_bits;
+        }
+
+        Ok(RunningTuringMachine {
+            spec: guest,
+            state,
+            pos: head_pos,
+            tape: cells.iter().map(|&i| guest_symbols[i]).collect(),
+        })
+    }
+
     /// Encode a guest TM, optionally reordering rules so that `last_rules`
     /// appear at the end of the rules section (in the given order).
     /// Rules not in `last_rules` appear first (in `iter_rules` order).
@@ -573,9 +646,13 @@ impl MyUtmEncodingScheme {
     pub fn encode_with_rule_order<Guest: TuringMachineSpec>(
         guest: &RunningTuringMachine<Guest>,
         last_rules: Option<&[(Guest::State, Guest::Symbol)]>,
+        state_order: Option<&[Guest::State]>,
+        symbol_order: Option<&[Guest::Symbol]>,
     ) -> Vec<Symbol> {
-        let guest_states: Vec<Guest::State> = guest.spec.iter_states().collect();
-        let guest_symbols: Vec<Guest::Symbol> = guest.spec.iter_symbols().collect();
+        let default_states: Vec<Guest::State> = guest.spec.iter_states().collect();
+        let default_symbols: Vec<Guest::Symbol> = guest.spec.iter_symbols().collect();
+        let guest_states = state_order.unwrap_or(&default_states);
+        let guest_symbols = symbol_order.unwrap_or(&default_symbols);
 
         let guest_st_to_idx = guest_states
             .iter()
