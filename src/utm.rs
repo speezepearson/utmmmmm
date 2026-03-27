@@ -1529,7 +1529,7 @@ impl UtmSpec for MyUtmSpec {
         &self,
         tm: &RunningTuringMachine<Guest>,
     ) -> Vec<Self::Symbol> {
-        self.encode_with_rule_order(tm, None)
+        self.encode_optimized(tm, &MyUtmSpecOptimizationHints::default())
     }
     fn decode<'a, Guest: TuringMachineSpec>(
         &self,
@@ -1603,6 +1603,21 @@ impl UtmSpec for MyUtmSpec {
     }
 }
 
+pub struct MyUtmSpecOptimizationHints<Guest: TuringMachineSpec> {
+    pub last_rules: Vec<(Guest::State, Guest::Symbol)>,
+    pub state_encodings: HashMap<Guest::State, Vec<Symbol>>,
+    pub symbol_encodings: HashMap<Guest::Symbol, Vec<Symbol>>,
+}
+impl<Guest: TuringMachineSpec> Default for MyUtmSpecOptimizationHints<Guest> {
+    fn default() -> Self {
+        Self {
+            last_rules: vec![],
+            state_encodings: HashMap::new(),
+            symbol_encodings: HashMap::new(),
+        }
+    }
+}
+
 impl MyUtmSpec {
     /// Encode a guest TM, optionally reordering rules so that `last_rules`
     /// appear at the end of the rules section (in the given order).
@@ -1610,10 +1625,10 @@ impl MyUtmSpec {
     ///
     /// The UTM scans rules right-to-left, so placing frequently-used rules
     /// last reduces search time.
-    pub fn encode_with_rule_order<Guest: TuringMachineSpec>(
+    pub fn encode_optimized<Guest: TuringMachineSpec>(
         &self,
         guest: &RunningTuringMachine<Guest>,
-        last_rules: Option<&[(Guest::State, Guest::Symbol)]>,
+        hints: &MyUtmSpecOptimizationHints<Guest>,
     ) -> Vec<Symbol> {
         let guest_states: Vec<Guest::State> = guest.spec.iter_states().collect();
         let guest_symbols: Vec<Guest::Symbol> = guest.spec.iter_symbols().collect();
@@ -1637,26 +1652,23 @@ impl MyUtmSpec {
         let all_rules: Vec<Rule<Guest::State, Guest::Symbol>> = guest.spec.iter_rules().collect();
 
         // Reorder rules if last_rules is provided
-        let ordered_rules: Vec<&Rule<Guest::State, Guest::Symbol>> = match last_rules {
-            None => all_rules.iter().collect(),
-            Some(last) => {
-                let last_set: std::collections::HashSet<(Guest::State, Guest::Symbol)> =
-                    last.iter().copied().collect();
-                let mut front: Vec<&Rule<Guest::State, Guest::Symbol>> = all_rules
+        let ordered_rules: Vec<&Rule<Guest::State, Guest::Symbol>> = {
+            let last_set: std::collections::HashSet<(Guest::State, Guest::Symbol)> =
+                hints.last_rules.iter().copied().collect();
+            let mut front: Vec<&Rule<Guest::State, Guest::Symbol>> = all_rules
+                .iter()
+                .filter(|(st, sym, _, _, _)| !last_set.contains(&(*st, *sym)))
+                .collect();
+            // Append last_rules in the specified order
+            for &(lst, lsym) in &hints.last_rules {
+                if let Some(rule) = all_rules
                     .iter()
-                    .filter(|(st, sym, _, _, _)| !last_set.contains(&(*st, *sym)))
-                    .collect();
-                // Append last_rules in the specified order
-                for &(lst, lsym) in last {
-                    if let Some(rule) = all_rules
-                        .iter()
-                        .find(|(st, sym, _, _, _)| *st == lst && *sym == lsym)
-                    {
-                        front.push(rule);
-                    }
+                    .find(|(st, sym, _, _, _)| *st == lst && *sym == lsym)
+                {
+                    front.push(rule);
                 }
-                front
             }
+            front
         };
 
         let mut tape: Vec<Symbol> = Vec::new();
@@ -1711,13 +1723,19 @@ impl MyUtmSpec {
 
         let caret_pos = tape.len();
         let default_tape = &[guest.spec.blank()];
-        tape.extend_from_slice(&self.encode_tape(guest.spec, if guest.tape.is_empty() {default_tape} else { guest.tape.as_slice()}));
+        tape.extend_from_slice(&self.encode_tape(
+            guest.spec,
+            if guest.tape.is_empty() {
+                default_tape
+            } else {
+                guest.tape.as_slice()
+            },
+        ));
         tape[caret_pos] = Symbol::Caret;
 
         tape
     }
 }
-
 
 pub fn make_utm_spec() -> MyUtmSpec {
     SimpleTuringMachineSpec {

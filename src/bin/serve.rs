@@ -10,12 +10,13 @@ use tiny_http::{Header, Response, Server};
 use utmmmmm::compiled::CompiledTuringMachineSpec;
 use utmmmmm::delta::compute_new_overwrites;
 use utmmmmm::infinity::InfiniteTape;
+use utmmmmm::optimization_hints::make_my_utm_self_optimization_hints;
 use utmmmmm::savepoint::{
     build_snapshot, load_savepoint, save_savepoint, Snapshot, TowerLevelJson,
 };
 use utmmmmm::tm::{RunningTMStatus, RunningTuringMachine, TuringMachineSpec};
 use utmmmmm::tower::Tower;
-use utmmmmm::utm::{MyUtmSpec, State, Symbol,  make_utm_spec};
+use utmmmmm::utm::{make_utm_spec, MyUtmSpec, State, Symbol};
 
 // ── Snapshot: shared between tower thread and SSE client threads ──
 
@@ -95,7 +96,7 @@ fn sim_thread(
     sse_clients: SseClients,
     savepoint_path: Option<String>,
 ) {
-    let background = InfiniteTape::new(spec);
+    let background = InfiniteTape::new(spec, make_my_utm_self_optimization_hints());
     let compiled = CompiledTuringMachineSpec::compile(spec).expect("UTM should compile");
 
     let mut tower = Tower::new(spec, RunningTuringMachine::new(&compiled));
@@ -268,7 +269,7 @@ fn main() {
     // as though the tape will ever get to 1M symbols
     let unblemished_str: Arc<String> = {
         let mut syms: Vec<Symbol> = Vec::new();
-        InfiniteTape::new(&utm_spec).extend(&mut syms, 1_000_000);
+        InfiniteTape::new(&utm_spec, Default::default()).extend(&mut syms, 1_000_000);
         Arc::new(syms.iter().map(|s| format!("{}", s)).collect())
     };
 

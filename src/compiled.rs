@@ -170,7 +170,7 @@ impl<'a, Guest: TuringMachineSpec> CompiledTuringMachineSpec<'a, Guest> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ tm::run_tm, toy_machines::CHECK_PALINDROME_SPEC, utm::make_utm_spec};
+    use crate::{tm::run_tm, toy_machines::CHECK_PALINDROME_SPEC, utm::make_utm_spec};
 
     use super::*;
 
@@ -198,7 +198,7 @@ mod tests {
 
         let utm_spec = make_utm_spec();
         let compiled = CompiledTuringMachineSpec::compile(&utm_spec).unwrap();
-        let background = InfiniteTape::new(&utm_spec);
+        let background = InfiniteTape::new(&utm_spec, Default::default());
 
         // Interpreted: run 1000 steps with InfiniteTape
         let mut interp_tm = RunningTuringMachine::new(&utm_spec);

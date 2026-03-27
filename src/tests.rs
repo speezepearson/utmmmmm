@@ -1,4 +1,5 @@
 use crate::gen_utm::UtmSpec as _;
+use crate::optimization_hints::make_my_utm_self_optimization_hints;
 use crate::tm::{
     run_tm, run_until_enters_state, HaltReason, RunUntilResult, RunningTuringMachine,
     TuringMachineSpec,
@@ -363,7 +364,13 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
     // Put one specific rule last
     let utm_spec = make_utm_spec();
     let last_rules = vec![(FlipBitsState::Flip, Zero)];
-    let encoded = utm_spec.encode_with_rule_order(&tm, Some(&last_rules));
+    let encoded = utm_spec.encode_optimized(
+        &tm,
+        &MyUtmSpecOptimizationHints {
+            last_rules,
+            ..MyUtmSpecOptimizationHints::default()
+        },
+    );
 
     // Run directly
     let mut direct_tm = RunningTuringMachine {
@@ -404,7 +411,7 @@ fn test_encode_with_none_same_as_encode() {
 
     let utm = make_utm_spec();
     let plain = utm.encode(&tm);
-    let with_none = utm.encode_with_rule_order(&tm, None);
+    let with_none = utm.encode_optimized(&tm, &Default::default());
     assert_eq!(plain, with_none);
 }
 
@@ -584,7 +591,6 @@ fn test_run_until_enters_state_halts_in_non_target() {
 #[ignore] // Run with: cargo test --release -- --ignored bench_rule_order --nocapture
 fn bench_rule_order_optimization() {
     use crate::compiled::CompiledTuringMachineSpec;
-    use crate::optimization_hints::OPTIMIZATION_HINTS;
 
     const STEPS: usize = 100_000_000;
 
@@ -592,9 +598,10 @@ fn bench_rule_order_optimization() {
     let compiled = CompiledTuringMachineSpec::compile(&utm_spec).expect("UTM should compile");
 
     // Helper: build a compiled TM running the infinite UTM tape with given rule order
-    let build_tm = |last_rules: Option<&[(State, Symbol)]>| {
+    let build_tm = |optimization_hints: &MyUtmSpecOptimizationHints<MyUtmSpec>| {
         // Compute the header with the given rule order
-        let header_tape = utm_spec.encode_with_rule_order(&RunningTuringMachine::new(&utm_spec), last_rules);
+        let header_tape =
+            utm_spec.encode_optimized(&RunningTuringMachine::new(&utm_spec), &optimization_hints);
         let caret_pos = header_tape
             .iter()
             .position(|&s| s == Symbol::Caret)
@@ -670,11 +677,11 @@ fn bench_rule_order_optimization() {
     };
 
     // ── Unoptimized (default rule order) ──
-    let mut unopt_tm = build_tm(None);
+    let mut unopt_tm = build_tm(&Default::default());
     let unopt_guest_steps = count_guest_steps(&mut unopt_tm);
 
     // ── Optimized (hints rule order) ──
-    let mut opt_tm = build_tm(Some(OPTIMIZATION_HINTS));
+    let mut opt_tm = build_tm(&make_my_utm_self_optimization_hints());
     let opt_guest_steps = count_guest_steps(&mut opt_tm);
 
     eprintln!(

@@ -2,21 +2,28 @@
 // Infinite UTM tape: encode a UTM simulating itself (fixed point)
 // ════════════════════════════════════════════════════════════════════
 
-use std::{cell::RefCell,};
+use std::cell::RefCell;
 
 use crate::{
-    compiled::{CSymbol, CompiledTuringMachineSpec}, gen_utm::UtmSpec as _, tm::{RunningTuringMachine, SimpleTuringMachineSpec}, utm::{MyUtmSpec, State, Symbol}
+    compiled::{CSymbol, CompiledTuringMachineSpec},
+    tm::{RunningTuringMachine, SimpleTuringMachineSpec},
+    utm::{MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol},
 };
 
 pub struct InfiniteTape<'a> {
     spec: &'a MyUtmSpec,
+    optimization_hints: MyUtmSpecOptimizationHints<MyUtmSpec>,
     realized: RefCell<Vec<Symbol>>,
 }
 
 impl<'a> InfiniteTape<'a> {
-    pub fn new(spec: &'a MyUtmSpec) -> Self {
+    pub fn new(
+        spec: &'a MyUtmSpec,
+        optimization_hints: MyUtmSpecOptimizationHints<MyUtmSpec>,
+    ) -> Self {
         Self {
             spec,
+            optimization_hints,
             realized: RefCell::new(Vec::new()),
         }
     }
@@ -61,23 +68,23 @@ impl<'a> InfiniteTape<'a> {
         while index >= self.realized.borrow().len() {
             let mut rtm = RunningTuringMachine::new(self.spec);
             rtm.tape = self.realized.take();
-            self.realized.replace(self.spec.encode(&rtm));
+            self.realized
+                .replace(self.spec.encode_optimized(&rtm, &self.optimization_hints));
         }
-
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::utm::make_utm_spec;
+    use crate::{gen_utm::UtmSpec, utm::make_utm_spec};
 
     use super::*;
 
     #[test]
     fn test_is_self_similar() {
         let spec = make_utm_spec();
-        let inf = InfiniteTape::new(&spec);
+        let inf = InfiniteTape::new(&spec, Default::default());
 
         let header_len = spec.encode(&RunningTuringMachine::new(&spec)).len() + 10;
 

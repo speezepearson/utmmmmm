@@ -1,7 +1,7 @@
 use crate::compiled::{CState, CompiledTuringMachineSpec};
 use crate::gen_utm::UtmSpec as _;
 use crate::tm::{step, RunningTMStatus, RunningTuringMachine, SimpleTuringMachineSpec};
-use crate::utm::{MyUtmSpec, };
+use crate::utm::MyUtmSpec;
 use crate::utm::{State, Symbol};
 use std::cmp::max;
 

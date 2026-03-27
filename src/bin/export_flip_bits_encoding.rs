@@ -1,7 +1,7 @@
 use utmmmmm::gen_utm::UtmSpec as _;
 use utmmmmm::tm::RunningTuringMachine;
 use utmmmmm::toy_machines::{FlipBitsSymbol, FLIP_BITS_SPEC};
-use utmmmmm::utm::{Symbol, make_utm_spec};
+use utmmmmm::utm::{make_utm_spec, Symbol};
 
 fn symbol_to_char(s: Symbol) -> char {
     match s {
