@@ -724,6 +724,46 @@ fn test_encode_decode_optimized_roundtrip() {
     assert_eq!(original.pos, decoded.pos, "head position mismatch");
 }
 
+#[test]
+fn test_plain_decode_fails_with_optimized_encoding() {
+    // Demonstrates the bug that existed before decode_optimized was added:
+    // plain decode() uses sequential indices, so it produces wrong results
+    // when the tape was encoded with non-default (optimized) encodings.
+    // This test would have caught the bug at HEAD~2.
+    let utm_spec = make_utm_spec();
+    let hints = make_my_utm_self_optimization_hints();
+
+    // Verify the hints actually use non-default encodings
+    let default_state_enc: HashMap<State, usize> = utm_spec
+        .iter_states()
+        .enumerate()
+        .map(|(i, s)| (s, i))
+        .collect();
+    assert_ne!(
+        hints.state_encodings, default_state_enc,
+        "test requires non-default state encodings to be meaningful"
+    );
+
+    let original = RunningTuringMachine::new(&utm_spec);
+    let encoded = utm_spec.encode_optimized(&original, &hints);
+
+    // Plain decode (the old code path) should fail or give wrong results,
+    // because it maps indices sequentially while the tape uses optimized indices.
+    // In practice, the optimized encoding assigns indices >= n_states, which
+    // causes decode to error with "no state for encoding index N".
+    let result = utm_spec.decode(&utm_spec, &encoded);
+    match result {
+        Err(_) => {} // Expected: index out of range
+        Ok(bad_decoded) => {
+            // If it doesn't error, the state must at least be wrong
+            assert_ne!(
+                original.state, bad_decoded.state,
+                "plain decode should NOT roundtrip correctly with optimized encoding"
+            );
+        }
+    }
+}
+
 // ════════════════════════════════════════════════════════════════════
 // Test: tower decoding produces valid UTM tape with optimized encoding
 // ════════════════════════════════════════════════════════════════════
