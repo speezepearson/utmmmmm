@@ -312,6 +312,21 @@ fn main() {
                 utm::State::RejRestAcc => "rejecting; restoring accept states section marks to 0/1",
                 utm::State::RejRestState => "rejecting; restoring state section marks to 0/1",
                 utm::State::RejFinalHome => "rejecting; seeking $ to enter final reject state",
+
+                // Navigation states for new tape layout
+                utm::State::ChkAccC0SkBk => "accept check; carrying bit 0, skipping blank section",
+                utm::State::ChkAccC0SkR => "accept check; carrying bit 0, skipping rules section",
+                utm::State::ChkAccC1SkBk => "accept check; carrying bit 1, skipping blank section",
+                utm::State::ChkAccC1SkR => "accept check; carrying bit 1, skipping rules section",
+                utm::State::ChkAccOkSkR => "accept check ok; skipping rules section left",
+                utm::State::ChkAccOkSkBk => "accept check ok; skipping blank section left",
+                utm::State::ChkAccBkSkR => "accept check mismatch; skipping rules section left",
+                utm::State::ChkAccBkSkBk => "accept check mismatch; skipping blank section left",
+                utm::State::AccRstSkBk => "accepting; skipping blank section right",
+                utm::State::AccRstSkR => "accepting; skipping rules section right",
+                utm::State::RejRstSkBk => "rejecting; skipping blank section right",
+                utm::State::RejRstSkR => "rejecting; skipping rules section right",
+                utm::State::NmSkipBk => "no match; skipping blank section left to reach accept states",
             }.to_string(),
             |s| format!("{:?}", s),
             |s| match s {

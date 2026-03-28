@@ -16,7 +16,7 @@ fn main() {
     let utm_spec = make_utm_spec();
     let compiled = CompiledTuringMachineSpec::compile(&utm_spec).expect("UTM should compile");
 
-    let init_cstate = compiled.compile_state(State::Init);
+    let mark_rule_cstate = compiled.compile_state(State::MarkRule);
 
     let mut tm = RunningTuringMachine::new(&compiled);
     let background = InfiniteTape::new(&utm_spec, &optimization_hints);
@@ -52,8 +52,8 @@ fn main() {
             };
             total_steps += 1;
 
-            // Detect inner UTM completing a step: transition into Init from a different state
-            if tm.state == init_cstate && prev_state != init_cstate {
+            // Detect inner UTM completing a step: entering MarkRule (start of rule matching)
+            if tm.state == mark_rule_cstate && prev_state != mark_rule_cstate {
                 inner_steps += 1;
             }
             prev_state = tm.state;

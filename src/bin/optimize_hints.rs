@@ -11,7 +11,7 @@ fn run_and_tally(
     max_steps: u64,
 ) -> (u64, TmTransitionStats<MyUtmSpec>) {
     let compiled = CompiledTuringMachineSpec::compile(utm_spec).expect("UTM should compile");
-    let init_cstate = compiled.compile_state(State::Init);
+    let mark_rule_cstate = compiled.compile_state(State::MarkRule);
 
     let mut tm = RunningTuringMachine::new(&compiled);
     let background = InfiniteTape::new(utm_spec, hints);
@@ -39,7 +39,9 @@ fn run_and_tally(
                 Dir::Right => tm.pos + 1,
             };
 
-            if tm.state == init_cstate && prev_state != init_cstate {
+            // Detect inner step: entering MarkRule from DoneSeekHome
+            // (In new layout, DoneSeekHome → MarkRule directly, not via Init)
+            if tm.state == mark_rule_cstate && prev_state != mark_rule_cstate {
                 inner_steps += 1;
             }
             prev_state = tm.state;
