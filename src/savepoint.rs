@@ -7,7 +7,7 @@ use crate::delta::current_overwrites;
 use crate::infinity::InfiniteTape;
 use crate::tm::RunningTuringMachine;
 use crate::tower::{CompiledUtmSpec, Tower, TowerLevel};
-use crate::utm::{MyUtmSpec, State, Symbol};
+use crate::utm::{MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol};
 
 #[derive(Serialize, Deserialize)]
 pub struct Snapshot {
@@ -67,6 +67,7 @@ pub fn load_savepoint<'a>(
     path: &str,
     spec: &'a CompiledUtmSpec<'a>,
     background: &InfiniteTape,
+    hints: &'a MyUtmSpecOptimizationHints<MyUtmSpec>,
 ) -> Option<Tower<'a>> {
     let data = std::fs::read(path).ok()?;
     let snapshot: Snapshot = serde_json::from_slice(&data).ok()?;
@@ -75,7 +76,7 @@ pub fn load_savepoint<'a>(
         .split_first()
         .expect("savepoint should have at least one level");
 
-    let mut tower = Tower::new(utm_spec, RunningTuringMachine::new(spec));
+    let mut tower = Tower::new(utm_spec, hints, RunningTuringMachine::new(spec));
 
     tower.base = TowerLevel {
         total_steps: snap_base.steps,

@@ -100,10 +100,10 @@ fn sim_thread(
     let background = InfiniteTape::new(spec, &optimization_hints);
     let compiled = CompiledTuringMachineSpec::compile(spec).expect("UTM should compile");
 
-    let mut tower = Tower::new(spec, RunningTuringMachine::new(&compiled));
+    let mut tower = Tower::new(spec, &optimization_hints, RunningTuringMachine::new(&compiled));
 
     if let Some(ref sp_path) = savepoint_path {
-        if let Some(t) = load_savepoint(spec, sp_path, &compiled, &background) {
+        if let Some(t) = load_savepoint(spec, sp_path, &compiled, &background, &optimization_hints) {
             tower = t;
         }
     }

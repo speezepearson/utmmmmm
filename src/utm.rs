@@ -1521,9 +1521,52 @@ impl UtmSpec for MyUtmSpec {
     ) -> Result<RunningTuringMachine<'a, Guest>, String> {
         let guest_states: Vec<Guest::State> = guest.iter_states().collect();
         let guest_symbols: Vec<Guest::Symbol> = guest.iter_symbols().collect();
+        // Default decode: index i → i-th state/symbol in iter order
+        let n_states = guest_states.len();
+        let n_symbols = guest_symbols.len();
+        let mut state_by_idx = vec![None; n_states.next_power_of_two().max(2)];
+        for (i, &s) in guest_states.iter().enumerate() {
+            state_by_idx[i] = Some(s);
+        }
+        let mut sym_by_idx = vec![None; n_symbols.next_power_of_two().max(2)];
+        for (i, &s) in guest_symbols.iter().enumerate() {
+            sym_by_idx[i] = Some(s);
+        }
+        Self::decode_with_maps(guest, tape, &state_by_idx, &sym_by_idx, n_states, n_symbols)
+    }
+}
 
-        let n_state_bits = num_bits(guest_states.len());
-        let n_sym_bits = num_bits(guest_symbols.len());
+impl MyUtmSpec {
+    pub fn decode_optimized<'a, Guest: TuringMachineSpec>(
+        &self,
+        guest: &'a Guest,
+        tape: &[Symbol],
+        hints: &MyUtmSpecOptimizationHints<Guest>,
+    ) -> Result<RunningTuringMachine<'a, Guest>, String> {
+        let n_states = hints.state_encodings.len();
+        let n_symbols = hints.symbol_encodings.len();
+        // Build inverse maps: encoding index → guest state/symbol
+        let mut state_by_idx = vec![None; n_states.next_power_of_two().max(2)];
+        for (&st, &idx) in &hints.state_encodings {
+            state_by_idx[idx] = Some(st);
+        }
+        let mut sym_by_idx = vec![None; n_symbols.next_power_of_two().max(2)];
+        for (&sym, &idx) in &hints.symbol_encodings {
+            sym_by_idx[idx] = Some(sym);
+        }
+        Self::decode_with_maps(guest, tape, &state_by_idx, &sym_by_idx, n_states, n_symbols)
+    }
+
+    fn decode_with_maps<'a, Guest: TuringMachineSpec>(
+        guest: &'a Guest,
+        tape: &[Symbol],
+        state_by_idx: &[Option<Guest::State>],
+        sym_by_idx: &[Option<Guest::Symbol>],
+        n_states: usize,
+        n_symbols: usize,
+    ) -> Result<RunningTuringMachine<'a, Guest>, String> {
+        let n_state_bits = num_bits(n_states);
+        let n_sym_bits = num_bits(n_symbols);
 
         // Find the sections separated by #
         // Layout: $ #[0] RULES #[1] ACC #[2] STATE #[3] BLANK #[4] TAPE $
@@ -1542,7 +1585,9 @@ impl UtmSpec for MyUtmSpec {
         }
 
         let state_start = hashes[2] + 1;
-        let state = guest_states[from_binary_at(tape, state_start, n_state_bits)];
+        let state_idx = from_binary_at(tape, state_start, n_state_bits);
+        let state = state_by_idx[state_idx]
+            .ok_or_else(|| format!("no state for encoding index {}", state_idx))?;
 
         let tape_start = hashes[4] + 1;
         let tape_end = tape.len();
@@ -1581,7 +1626,12 @@ impl UtmSpec for MyUtmSpec {
             spec: guest,
             state,
             pos: head_pos,
-            tape: cells.iter().map(|&i| guest_symbols[i]).collect(),
+            tape: cells
+                .iter()
+                .map(|&i| {
+                    sym_by_idx[i].unwrap_or_else(|| panic!("no symbol for encoding index {}", i))
+                })
+                .collect(),
         })
     }
 }

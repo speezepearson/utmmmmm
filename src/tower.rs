@@ -1,7 +1,6 @@
 use crate::compiled::{CState, CompiledTuringMachineSpec};
-use crate::gen_utm::UtmSpec as _;
 use crate::tm::{step, RunningTMStatus, RunningTuringMachine, SimpleTuringMachineSpec};
-use crate::utm::MyUtmSpec;
+use crate::utm::{MyUtmSpec, MyUtmSpecOptimizationHints};
 use crate::utm::{State, Symbol};
 use std::cmp::max;
 
@@ -20,16 +19,22 @@ pub type UtmTowerLevel<'a> =
 
 pub struct Tower<'a> {
     pub utm_spec: &'a MyUtmSpec,
+    pub hints: &'a MyUtmSpecOptimizationHints<MyUtmSpec>,
     pub base: CompiledTowerLevel<'a>,
     pub decoded: Vec<UtmTowerLevel<'a>>,
     pub clean_compiled_state: CState,
 }
 
 impl<'a> Tower<'a> {
-    pub fn new(utm_spec: &'a MyUtmSpec, tm: RunningTuringMachine<'a, CompiledUtmSpec<'a>>) -> Self {
+    pub fn new(
+        utm_spec: &'a MyUtmSpec,
+        hints: &'a MyUtmSpecOptimizationHints<MyUtmSpec>,
+        tm: RunningTuringMachine<'a, CompiledUtmSpec<'a>>,
+    ) -> Self {
         let clean_compiled_state = tm.spec.compile_state(State::Init);
         Self {
             utm_spec,
+            hints,
             base: TowerLevel {
                 tm,
                 total_steps: 0,
@@ -57,7 +62,7 @@ impl<'a> Tower<'a> {
         let mut cur = &base_decompiled;
         let mut decoding = self.decoded.as_mut_slice();
         while let Some((next, rest)) = decoding.split_first_mut() {
-            if !decode_into_level(&self.utm_spec, &cur, next) {
+            if !decode_into_level(self.utm_spec, self.hints, cur, next) {
                 // next level didn't enter Init, so we're done
                 return res;
             }
@@ -70,7 +75,7 @@ impl<'a> Tower<'a> {
             max_head_pos: 0,
             tm: self
                 .utm_spec
-                .decode(self.utm_spec, &cur.tape)
+                .decode_optimized(self.utm_spec, &cur.tape, self.hints)
                 .expect("it should always be okay to decode a utm that just entered Init"),
         };
         self.decoded.push(new_level);
@@ -81,11 +86,12 @@ impl<'a> Tower<'a> {
 
 fn decode_into_level<'a>(
     utm_spec: &'a MyUtmSpec,
+    hints: &'a MyUtmSpecOptimizationHints<MyUtmSpec>,
     tm: &'_ UtmTm<'_>,
     dst: &'_ mut UtmTowerLevel<'a>,
 ) -> bool {
     let decoded = utm_spec
-        .decode(utm_spec, &tm.tape)
+        .decode_optimized(utm_spec, &tm.tape, hints)
         .expect("it should always be okay to decode a utm that just entered Init");
     let old_state = dst.tm.state;
     let new_state = decoded.state;
