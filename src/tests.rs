@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::gen_utm::UtmSpec as _;
 use crate::optimization_hints::make_my_utm_self_optimization_hints;
 use crate::tm::{
@@ -363,13 +365,10 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
 
     // Put one specific rule last
     let utm_spec = make_utm_spec();
-    let last_rules = vec![(FlipBitsState::Flip, Zero)];
     let encoded = utm_spec.encode_optimized(
         &tm,
-        &MyUtmSpecOptimizationHints {
-            last_rules,
-            ..MyUtmSpecOptimizationHints::default()
-        },
+        &TmTransitionStats(HashMap::from([((FlipBitsState::Flip, Zero), 1)]))
+            .make_optimization_hints(&spec),
     );
 
     // Run directly
@@ -411,7 +410,7 @@ fn test_encode_with_none_same_as_encode() {
 
     let utm = make_utm_spec();
     let plain = utm.encode(&tm);
-    let with_none = utm.encode_optimized(&tm, &Default::default());
+    let with_none = utm.encode_optimized(&tm, &MyUtmSpecOptimizationHints::guess(&spec));
     assert_eq!(plain, with_none);
 }
 
@@ -677,7 +676,7 @@ fn bench_rule_order_optimization() {
     };
 
     // ── Unoptimized (default rule order) ──
-    let mut unopt_tm = build_tm(&Default::default());
+    let mut unopt_tm = build_tm(&MyUtmSpecOptimizationHints::guess(&utm_spec));
     let unopt_guest_steps = count_guest_steps(&mut unopt_tm);
 
     // ── Optimized (hints rule order) ──

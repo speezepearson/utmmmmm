@@ -96,7 +96,8 @@ fn sim_thread(
     sse_clients: SseClients,
     savepoint_path: Option<String>,
 ) {
-    let background = InfiniteTape::new(spec, make_my_utm_self_optimization_hints());
+    let optimization_hints = make_my_utm_self_optimization_hints();
+    let background = InfiniteTape::new(spec, &optimization_hints);
     let compiled = CompiledTuringMachineSpec::compile(spec).expect("UTM should compile");
 
     let mut tower = Tower::new(spec, RunningTuringMachine::new(&compiled));
@@ -263,13 +264,14 @@ fn main() {
         .unwrap_or(8080);
 
     let utm_spec = make_utm_spec();
+    let optimization_hints = make_my_utm_self_optimization_hints();
 
     // Pre-compute the unblemished infinite tape (1M symbols)
     // TODO: we should technically dynamically send updates to the clients,
     // as though the tape will ever get to 1M symbols
     let unblemished_str: Arc<String> = {
         let mut syms: Vec<Symbol> = Vec::new();
-        InfiniteTape::new(&utm_spec, Default::default()).extend(&mut syms, 1_000_000);
+        InfiniteTape::new(&utm_spec, &optimization_hints).extend(&mut syms, 1_000_000);
         Arc::new(syms.iter().map(|s| format!("{}", s)).collect())
     };
 

@@ -12,14 +12,14 @@ use crate::{
 
 pub struct InfiniteTape<'a> {
     spec: &'a MyUtmSpec,
-    optimization_hints: MyUtmSpecOptimizationHints<MyUtmSpec>,
+    optimization_hints: &'a MyUtmSpecOptimizationHints<MyUtmSpec>,
     realized: RefCell<Vec<Symbol>>,
 }
 
 impl<'a> InfiniteTape<'a> {
     pub fn new(
         spec: &'a MyUtmSpec,
-        optimization_hints: MyUtmSpecOptimizationHints<MyUtmSpec>,
+        optimization_hints: &'a MyUtmSpecOptimizationHints<MyUtmSpec>,
     ) -> Self {
         Self {
             spec,
@@ -84,7 +84,8 @@ mod tests {
     #[test]
     fn test_is_self_similar() {
         let spec = make_utm_spec();
-        let inf = InfiniteTape::new(&spec, Default::default());
+        let optimization_hints = MyUtmSpecOptimizationHints::guess(&spec);
+        let inf = InfiniteTape::new(&spec, &optimization_hints);
 
         let header_len = spec.encode(&RunningTuringMachine::new(&spec)).len() + 10;
 
