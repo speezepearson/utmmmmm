@@ -1,0 +1,448 @@
+flowchart TD
+    subgraph accept ["Accept" ]
+        Accept
+        AcceptSeekHome
+        AccFinalHome
+        AccRestAcc
+        AccRestState
+        AccRstSkBk
+        AccRstSkR
+    end
+    subgraph chk_acc ["Phase 8: Check Accept" ]
+        ChkAccBack2acc
+        ChkAccC0
+        ChkAccC0Find
+        ChkAccC1
+        ChkAccC1Find
+        ChkAccDoRest
+        ChkAccDoRest2
+        ChkAccFailBit
+        ChkAccInit
+        ChkAccIntoAcc
+        ChkAccNextEntry
+        ChkAccOk
+        ChkAccOkAcc
+        ChkAccOkFind
+        ChkAccOkSkip
+        ChkAccRestState
+        ChkAccC0SkBk
+        ChkAccC0SkR
+        ChkAccC1SkBk
+        ChkAccC1SkR
+        ChkAccOkSkR
+        ChkAccOkSkBk
+        ChkAccBkSkR
+        ChkAccBkSkBk
+        NmSkipBk
+    end
+    subgraph cmp_state ["Phase 2: Compare State" ]
+        CmpStC0
+        CmpStC0Find
+        CmpStC0Sk1
+        CmpStC1
+        CmpStC1Find
+        CmpStC1Sk1
+        CmpStFail
+        CmpStNextbit
+        CmpStOk
+        CmpStRead
+        StfFindStar
+        StfGoPrev
+        StfRestoreRule
+        StfRestoreState
+        StfSkipRest
+        StMatchCleanup
+        StmBackToRule
+        StmGoLeft
+        StmGotoState
+        StmGsSk1
+        StmRestoreRule
+        StmRestoreState
+        SymSkipState
+    end
+    subgraph cmp_sym ["Phase 3: Compare Symbol" ]
+        CmpSymC0
+        CmpSymC0Fb
+        CmpSymC0Fh
+        CmpSymC0S1
+        CmpSymC0S2
+        CmpSymC0S3
+        CmpSymC1
+        CmpSymC1Fb
+        CmpSymC1Fh
+        CmpSymC1S1
+        CmpSymC1S2
+        CmpSymC1S3
+        CmpSymFail
+        CmpSymNb2
+        CmpSymNextbit
+        CmpSymOk
+        CmpSymRead
+        SmcFh
+        SmcRestDone
+        SmcRestHead
+        SmcRestSym
+        SmcS1
+        SmcS2
+        SmcS3
+        SmcSkipSt
+        SymfDeactivate
+        SymfRestHead
+        SymfRestSym
+        SymfSeekStar
+        SymfSkipRest
+        SymfSkipSt
+        SymMatchCleanup
+    end
+    subgraph cp_nst ["Phase 4: Copy New State" ]
+        ApplyReadNst
+        CpNstC0
+        CpNstC0S1
+        CpNstC0W
+        CpNstC1
+        CpNstC1S1
+        CpNstC1W
+        CpNstDone
+        CpNstNext
+        CpNstNext2
+        CpNstNext3
+        CpNstRestDo
+        CpNstRestNav
+        CpNstRestS1
+        CpNstRet
+    end
+    subgraph cp_nsym ["Phase 5: Copy New Symbol" ]
+        CpNsymC0
+        CpNsymC0Fb
+        CpNsymC0Fh
+        CpNsymC0S1
+        CpNsymC0S2
+        CpNsymC0S3
+        CpNsymC1
+        CpNsymC1Fb
+        CpNsymC1Fh
+        CpNsymC1S1
+        CpNsymC1S2
+        CpNsymC1S3
+        CpNsymDone
+        CpNsymFn2
+        CpNsymFn3
+        CpNsymFn4
+        CpNsymFnext
+        CpNsymNav
+        CpNsymNav2
+        CpNsymNav3
+        CpNsymRead
+        CpNsymRestNav
+        CpNsymRet
+        CpNsymRnDo
+        CpNsymRnFh
+        CpNsymRnS1
+        CpNsymRnS2
+        CpNsymRnS3
+        CpNsymSeek
+    end
+    subgraph init ["Phase 0: Init" ]
+        Init
+        InitSeekEnd
+        InitSkip
+    end
+    subgraph mark_rule ["Phase 1: Mark Rule" ]
+        MarkRule
+        MarkRuleNoMatch
+    end
+    subgraph move_left ["Move Left" ]
+        MlFindHead
+        MlMark
+        MlNav
+        MlRestore
+        MlS1
+        MlS2
+        MlS3
+        MoveLeft
+    end
+    subgraph move_right ["Move Right" ]
+        MoveRight
+        MrExtBc0
+        MrExtBc1
+        MrExtBcNext
+        MrExtBcRet
+        MrExtendInit
+        MrExtH1
+        MrExtH2
+        MrExtH3
+        MrExtHome
+        MrExtReadBlank
+        MrExtRestBlank
+        MrExtToBlank
+        MrExtWriteHead
+        MrFindHead
+        MrNav
+        MrPlaceHead
+        MrS1
+        MrS2
+        MrS3
+        MrSkipCell
+    end
+    subgraph read_dir ["Phase 6: Read Direction" ]
+        RdRead
+        RdSk2
+        RdSk3
+        RdSk4
+        RdSkipToDir
+        ReadDir
+    end
+    subgraph reject ["Reject" ]
+        Reject
+        RejectSeekHome
+        RejFinalHome
+        RejRestAcc
+        RejRestState
+        RejRstSkBk
+        RejRstSkR
+    end
+    subgraph seek_home ["Phase 7: Seek Home" ]
+        DoneSeekHome
+    end
+
+    AccRstSkBk -->|"#/#,R"| AccRstSkR
+    ChkAccOkFind -->|"X/X,R"| ChkAccOkSkip
+    CpNsymC1Fh -->|"^/^,R"| CpNsymC1Fb
+    MlNav -->|"$/$,R"| MlS1
+    CmpSymC1S1 -->|"#/#,R"| CmpSymC1Fh
+    CmpStRead -->|"1/Y,R"| CmpStC1
+    ChkAccC0SkBk -->|"#/#,R"| ChkAccC0SkR
+    CpNsymRnS1 -->|"#/#,R"| CpNsymRnFh
+    AccRestAcc -->|"#/#,R"| AccRstSkBk
+    RejectSeekHome -->|"#/#,R"| RejRestAcc
+    CpNstDone -->|"X/0,L"| CpNstDone
+    SmcRestSym -->|"X/0,R"| SmcRestSym
+    CmpStRead -->|"0/X,R"| CmpStC0
+    ApplyReadNst -->|"0/X,R"| CpNstC0
+    CpNsymRead -->|"|/|,L"| CpNsymDone
+    ChkAccC1SkBk -->|"#/#,R"| ChkAccC1SkR
+    CmpStC1 -->|"$/$,R"| CmpStC1Find
+    CpNsymC0Fh -->|"^/^,R"| CpNsymC0Fb
+    StfRestoreRule -->|"X/0,R"| StfRestoreRule
+    MarkRule -->|"./*,R"| CmpStRead
+    RejRestState -->|"#/#,L"| RejFinalHome
+    CpNsymRnDo -->|"_/_,L"| ReadDir
+    CpNsymRead -->|"0/X,R"| CpNsymC0
+    CpNsymFn4 -->|"1/Y,R"| CpNsymC1
+    MrExtBcRet -->|"X/X,R"| MrExtBcNext
+    CpNstRet -->|"*/*,R"| CpNstNext
+    MrSkipCell -->|",/^,L"| MrPlaceHead
+    CpNsymFn4 -->|"0/X,R"| CpNsymC0
+    CpNsymFn3 -->|"|/|,R"| CpNsymFn4
+    MarkRuleNoMatch -->|"#/#,L"| NmSkipBk
+    ChkAccNextEntry -->|"#/#,L"| RejectSeekHome
+    ChkAccOkFind -->|"Y/Y,R"| ChkAccOkSkip
+    StfGoPrev -->|"./.,L"| MarkRule
+    CpNsymFn4 -->|"|/|,L"| CpNsymDone
+    ChkAccBkSkBk -->|"#/#,L"| ChkAccIntoAcc
+    AccFinalHome -->|"$/$,R"| Accept
+    RdRead -->|"L/L,L"| MoveLeft
+    CpNstNext3 -->|"1/Y,R"| CpNstC1
+    CmpSymC0 -->|"$/$,R"| CmpSymC0S1
+    MrPlaceHead -->|">/,,L"| DoneSeekHome
+    CmpSymC1Fb -->|"1/Y,L"| CmpSymOk
+    CpNstDone -->|"Y/1,L"| CpNstDone
+    CmpStFail -->|"$/$,R"| StfRestoreState
+    AccRstSkR -->|"$/$,R"| AccRestState
+    SymfRestHead -->|"Y/1,R"| SymfRestHead
+    StmGoLeft -->|"|/|,L"| StmRestoreRule
+    ChkAccC0Find -->|"1/Y,L"| ChkAccFailBit
+    RejRstSkBk -->|"#/#,R"| RejRstSkR
+    SmcFh -->|"^/^,R"| SmcRestHead
+    ChkAccDoRest2 -->|";/;,R"| ChkAccNextEntry
+    ChkAccDoRest -->|"#/#,L"| RejectSeekHome
+    ChkAccC0Find -->|"0/X,L"| ChkAccOk
+    CpNstC0W -->|"1/X,L"| CpNstRet
+    AccRestState -->|"#/#,L"| AccFinalHome
+    MrExtH2 -->|"#/#,R"| MrExtH3
+    SmcS1 -->|"#/#,R"| SmcFh
+    MrSkipCell -->|"_/_,L"| MrExtendInit
+    ApplyReadNst -->|"1/Y,R"| CpNstC1
+    StfRestoreState -->|"Y/1,R"| StfRestoreState
+    ChkAccDoRest -->|";/;,R"| ChkAccNextEntry
+    CmpStNextbit -->|"|/|,R"| StMatchCleanup
+    ChkAccRestState -->|"Y/1,R"| ChkAccRestState
+    SymfSeekStar -->|"*/*,R"| SymfSkipSt
+    CpNstRestDo -->|"#/#,L"| CpNsymSeek
+    ChkAccC1Find -->|"0/X,L"| ChkAccFailBit
+    CmpStC1Find -->|"0/X,L"| CmpStFail
+    CpNsymC0Fb -->|"0/X,L"| CpNsymRet
+    ChkAccDoRest2 -->|"#/#,L"| RejectSeekHome
+    ChkAccDoRest2 -->|"X/0,R"| ChkAccDoRest2
+    MlS1 -->|"#/#,R"| MlFindHead
+    ChkAccOkSkBk -->|"#/#,L"| ChkAccOkAcc
+    StfRestoreRule -->|"Y/1,R"| StfRestoreRule
+    MrExtBcRet -->|"Y/Y,R"| MrExtBcNext
+    CmpSymC1Fh -->|"^/^,R"| CmpSymC1Fb
+    ChkAccOkSkip -->|"1/Y,R"| ChkAccC1
+    SmcRestHead -->|",/,,L"| SmcRestDone
+    CmpSymC0Fb -->|"1/Y,L"| CmpSymFail
+    CmpStNextbit -->|"0/X,R"| CmpStC0
+    ChkAccC1SkR -->|"$/$,R"| ChkAccC1Find
+    CpNsymC1 -->|"$/$,R"| CpNsymC1S1
+    SmcRestDone -->|"*/*,R"| SmcSkipSt
+    AcceptSeekHome -->|"#/#,R"| AccRestAcc
+    StmBackToRule -->|"*/*,R"| SymSkipState
+    CmpStRead -->|"|/|,R"| StMatchCleanup
+    StMatchCleanup -->|"1/1,L"| StmGoLeft
+    MrExtBc0 -->|"_/0,L"| MrExtBcRet
+    CpNsymC1Fb -->|"1/Y,L"| CpNsymRet
+    ReadDir -->|"*/*,R"| RdSkipToDir
+    StfRestoreState -->|"#/#,L"| StfFindStar
+    StmRestoreState -->|"X/0,R"| StmRestoreState
+    ChkAccIntoAcc -->|"#/#,R"| ChkAccDoRest
+    CmpSymC1 -->|"$/$,R"| CmpSymC1S1
+    MrExtRestBlank -->|"#/#,R"| MrExtH2
+    StMatchCleanup -->|"|/|,L"| StmGoLeft
+    StmRestoreRule -->|"*/*,R"| StmGotoState
+    ChkAccOk -->|"$/$,L"| ChkAccOkSkR
+    CmpSymRead -->|"0/X,R"| CmpSymC0
+    ChkAccInit -->|"1/Y,R"| ChkAccC1
+    CpNsymC1Fb -->|"0/Y,L"| CpNsymRet
+    CmpStOk -->|"*/*,R"| CmpStNextbit
+    RdRead -->|"R/R,L"| MoveRight
+    MrExtReadBlank -->|"#/#,L"| MrExtRestBlank
+    ChkAccNextEntry -->|"0/X,R"| ChkAccC0
+    SymfRestSym -->|"X/0,R"| SymfRestSym
+    MrExtWriteHead -->|"$/$,L"| MrExtHome
+    CpNstNext3 -->|"|/|,L"| CpNstDone
+    CmpStC0Find -->|"1/Y,L"| CmpStFail
+    SmcRestHead -->|"X/0,R"| SmcRestHead
+    SymfRestHead -->|",/,,L"| SymfSeekStar
+    StmRestoreRule -->|"X/0,L"| StmRestoreRule
+    MlMark -->|",/^,R"| MlRestore
+    CpNsymC0Fb -->|"1/X,L"| CpNsymRet
+    ChkAccOkSkip -->|"#/#,L"| AcceptSeekHome
+    AccRestAcc -->|"X/0,R"| AccRestAcc
+    CpNstC1W -->|"1/Y,L"| CpNstRet
+    StfRestoreRule -->|"|/|,L"| StfGoPrev
+    ChkAccInit -->|"#/#,L"| RejFinalHome
+    SymfRestSym -->|"Y/1,R"| SymfRestSym
+    MoveLeft -->|"*/.,R"| MlNav
+    RdSk3 -->|"|/|,R"| RdSk4
+    CmpStNextbit -->|"1/Y,R"| CmpStC1
+    RejRestState -->|"Y/1,R"| RejRestState
+    NmSkipBk -->|"#/#,R"| ChkAccInit
+    MrExtReadBlank -->|"1/Y,R"| MrExtBc1
+    StmRestoreRule -->|"Y/1,L"| StmRestoreRule
+    ChkAccOkSkip -->|";/;,L"| AcceptSeekHome
+    ChkAccDoRest2 -->|"Y/1,R"| ChkAccDoRest2
+    CmpSymFail -->|"^/^,R"| SymfRestHead
+    CmpSymRead -->|"|/|,R"| SymMatchCleanup
+    ChkAccC0SkR -->|"$/$,R"| ChkAccC0Find
+    RejRstSkR -->|"$/$,R"| RejRestState
+    CpNstRestDo -->|"X/0,R"| CpNstRestDo
+    CpNsymRead -->|"1/Y,R"| CpNsymC1
+    CmpSymC1Fb -->|"0/X,L"| CmpSymFail
+    StfFindStar -->|"*/.,R"| StfRestoreRule
+    CmpSymOk -->|"*/*,R"| CmpSymNextbit
+    MrExtH1 -->|"#/#,R"| MrExtReadBlank
+    CmpSymRead -->|"1/Y,R"| CmpSymC1
+    AccRestState -->|"Y/1,R"| AccRestState
+    MoveRight -->|"*/.,R"| MrNav
+    MrExtendInit -->|">/,,R"| MrExtToBlank
+    CpNsymC0S1 -->|"#/#,R"| CpNsymC0Fh
+    AccRestState -->|"X/0,R"| AccRestState
+    MrExtBcNext -->|"0/X,R"| MrExtBc0
+    CpNsymNav2 -->|"|/|,R"| CpNsymNav3
+    MrExtRestBlank -->|"Y/1,L"| MrExtRestBlank
+    MrExtRestBlank -->|"X/0,L"| MrExtRestBlank
+    SymfRestSym -->|"|/|,L"| SymfDeactivate
+    CpNstC0W -->|"0/X,L"| CpNstRet
+    MrExtH3 -->|"$/$,L"| MarkRule
+    CpNstNext2 -->|"|/|,R"| CpNstNext3
+    ChkAccOkSkR -->|"#/#,L"| ChkAccOkSkBk
+    CpNsymDone -->|"Y/1,L"| CpNsymDone
+    RdSkipToDir -->|"|/|,R"| RdSk2
+    CmpSymNb2 -->|"|/|,R"| SymMatchCleanup
+    ChkAccDoRest -->|"X/0,R"| ChkAccDoRest2
+    RejRestAcc -->|"Y/1,R"| RejRestAcc
+    CpNsymRestNav -->|"$/$,R"| CpNsymRnS1
+    CpNstC1W -->|"0/Y,L"| CpNstRet
+    CpNstC0 -->|"$/$,R"| CpNstC0W
+    RejFinalHome -->|"$/$,R"| Reject
+    DoneSeekHome -->|"$/$,L"| MarkRule
+    CpNstRestNav -->|"$/$,R"| CpNstRestDo
+    ApplyReadNst -->|"|/|,L"| CpNstDone
+    RejRestAcc -->|"X/0,R"| RejRestAcc
+    CpNsymRnDo -->|"Y/1,R"| CpNsymRnDo
+    SmcRestSym -->|"Y/1,R"| SmcRestSym
+    AccRestAcc -->|"Y/1,R"| AccRestAcc
+    SmcRestHead -->|"_/_,L"| SmcRestDone
+    ChkAccBkSkR -->|"#/#,L"| ChkAccBkSkBk
+    MrExtToBlank -->|"_/^,L"| MrExtWriteHead
+    CmpStC0 -->|"$/$,R"| CmpStC0Find
+    SmcRestSym -->|"|/|,R"| ApplyReadNst
+    CmpStC0Find -->|"0/X,L"| CmpStOk
+    MrExtHome -->|"#/#,L"| MrExtH1
+    StMatchCleanup -->|"0/0,L"| StmGoLeft
+    CmpSymC0Fb -->|"0/X,L"| CmpSymOk
+    RejRestState -->|"X/0,R"| RejRestState
+    ChkAccC0 -->|"#/#,R"| ChkAccC0SkBk
+    MrExtBc1 -->|"_/1,L"| MrExtBcRet
+    CpNstRestDo -->|"Y/1,R"| CpNstRestDo
+    ChkAccFailBit -->|"$/$,R"| ChkAccRestState
+    ChkAccInit -->|"0/X,R"| ChkAccC0
+    SymfRestHead -->|"_/_,L"| SymfSeekStar
+    SymMatchCleanup -->|"$/$,R"| SmcS1
+    SymfSkipSt -->|"|/|,R"| SymfRestSym
+    MrNav -->|"$/$,R"| MrS1
+    CmpSymC0S1 -->|"#/#,R"| CmpSymC0Fh
+    CpNstC1 -->|"$/$,R"| CpNstC1W
+    CpNsymC1S1 -->|"#/#,R"| CpNsymC1Fh
+    SymfDeactivate -->|"*/.,L"| MarkRule
+    ChkAccOkFind -->|"#/#,L"| AcceptSeekHome
+    CpNsymSeek -->|"*/*,R"| CpNsymNav
+    RdSk2 -->|"|/|,R"| RdSk3
+    CpNsymFnext -->|"|/|,R"| CpNsymFn2
+    MrS1 -->|"#/#,R"| MrFindHead
+    ChkAccDoRest -->|"Y/1,R"| ChkAccDoRest2
+    StmGotoState -->|"$/$,R"| StmRestoreState
+    ChkAccBack2acc -->|"$/$,L"| ChkAccBkSkR
+    ChkAccC1Find -->|"1/Y,L"| ChkAccOk
+    MlFindHead -->|"^/>,L"| MlMark
+    CpNsymNav3 -->|"|/|,R"| CpNsymRead
+    ChkAccOkAcc -->|"#/#,R"| ChkAccOkFind
+    StmRestoreState -->|"Y/1,R"| StmRestoreState
+    MrExtReadBlank -->|"0/X,R"| MrExtBc0
+    MrFindHead -->|"^/>,R"| MrSkipCell
+    CmpSymNextbit -->|"|/|,R"| CmpSymNb2
+    SymSkipState -->|"|/|,R"| CmpSymRead
+    CpNstDone -->|"|/|,R"| CpNstRestNav
+    RejRestAcc -->|"#/#,R"| RejRstSkBk
+    CpNsymRnDo -->|",/,,L"| ReadDir
+    SmcSkipSt -->|"|/|,R"| SmcRestSym
+    CmpSymC0Fh -->|"^/^,R"| CmpSymC0Fb
+    Init -->|"$/$,L"| MarkRule
+    StfRestoreState -->|"X/0,R"| StfRestoreState
+    CpNstNext -->|"|/|,R"| CpNstNext2
+    CpNsymNav -->|"|/|,R"| CpNsymNav2
+    CpNstNext3 -->|"0/X,R"| CpNstC0
+    CpNsymRet -->|"*/*,R"| CpNsymFnext
+    RdSk4 -->|"|/|,R"| RdRead
+    MlRestore -->|">/,,L"| DoneSeekHome
+    SmcRestHead -->|"Y/1,R"| SmcRestHead
+    ChkAccRestState -->|"X/0,R"| ChkAccRestState
+    CpNsymDone -->|"|/|,R"| CpNsymRestNav
+    CpNsymC0 -->|"$/$,R"| CpNsymC0S1
+    ChkAccRestState -->|"#/#,L"| ChkAccBack2acc
+    ChkAccNextEntry -->|"1/Y,R"| ChkAccC1
+    CmpSymNb2 -->|"1/Y,R"| CmpSymC1
+    SymfRestHead -->|"X/0,R"| SymfRestHead
+    CpNsymRnFh -->|"^/^,R"| CpNsymRnDo
+    CpNsymFn2 -->|"|/|,R"| CpNsymFn3
+    CmpSymNb2 -->|"0/X,R"| CmpSymC0
+    MrExtBcNext -->|"1/Y,R"| MrExtBc1
+    CmpStC1Find -->|"1/Y,L"| CmpStOk
+    StmRestoreState -->|"#/#,L"| StmBackToRule
+    MarkRule -->|"#/#,L"| MarkRuleNoMatch
+    ChkAccOkSkip -->|"0/X,R"| ChkAccC0
+    CpNsymRnDo -->|"X/0,R"| CpNsymRnDo
+    MrExtBcNext -->|"#/#,L"| MrExtRestBlank
+    ChkAccC1 -->|"#/#,R"| ChkAccC1SkBk
+    CpNsymDone -->|"X/0,L"| CpNsymDone
