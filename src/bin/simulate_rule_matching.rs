@@ -116,6 +116,7 @@ fn main() {
         rule_order: optimized_hints.rule_order.clone(),
         state_encodings: spec.iter_states().enumerate().map(|(i, s)| (s, i)).collect(),
         symbol_encodings: spec.iter_symbols().enumerate().map(|(i, s)| (s, i)).collect(),
+        state_huffman: None,
     };
     let def = simulate(&default_hints, &all_rules, iterations);
 
