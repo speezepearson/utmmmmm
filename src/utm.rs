@@ -1630,7 +1630,10 @@ impl UtmSpec for MyUtmSpec {
     fn at_tick(&self, state: State, _symbol: Symbol) -> bool {
         // A tick occurs at the start of each rule-matching cycle:
         // - Init: freshly created machine (before any steps)
-        // - MarkRule: start of each new inner step
+        // - MarkRule: start of rule matching
+        // NOTE: MarkRule is entered multiple times per inner step (once per
+        // failed rule match), so this fires too often. The flip_bits at_tick
+        // tests demonstrate this.
         state == State::Init || state == State::MarkRule
     }
 }
