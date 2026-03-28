@@ -1,4 +1,6 @@
 pub mod compiled;
+#[allow(dead_code)]
+pub mod transition_tallies;
 pub mod delta;
 pub mod gen_utm;
 pub mod infinity;
