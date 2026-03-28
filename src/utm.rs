@@ -1628,17 +1628,13 @@ impl UtmSpec for MyUtmSpec {
     }
 
     fn at_tick(&self, state: State, _symbol: Symbol) -> bool {
-        // A tick occurs at the start of each rule-matching cycle:
-        // - Init: freshly created machine (before any steps)
-        // - MarkRule: start of rule matching
-        // NOTE: MarkRule is entered multiple times per inner step (once per
-        // failed rule match), so this fires too often. The flip_bits at_tick
-        // tests demonstrate this.
-        state == State::Init || state == State::MarkRule
+        state == State::DoneSeekHome
     }
 }
 
-/// Step a UTM until `at_tick` returns true (or it halts).
+/// Step a UTM until it freshly *enters* a tick state (or halts).
+/// A tick is detected when `at_tick` returns true and the previous
+/// state was not a tick state (i.e. the machine just transitioned in).
 /// Takes at least one step before checking.
 /// Returns Ok(num_steps) on tick, Err on halt or step limit.
 #[allow(dead_code)]
@@ -1649,20 +1645,22 @@ pub fn run_until_at_tick<Spec: UtmSpec>(
 ) -> Result<usize, crate::tm::RunUntilResult> {
     use crate::tm::{step, RunUntilResult, RunningTMStatus};
 
+    let mut was_at_tick = spec.at_tick(tm.state, if tm.pos < tm.tape.len() { tm.tape[tm.pos] } else { spec.blank() });
+
     for step_count in 1..=max_steps {
         if tm.pos >= tm.tape.len() {
             tm.tape.resize(tm.pos + 1, spec.blank());
         }
         match step(tm) {
             RunningTMStatus::Running => {
-                // Check at_tick with the state we just entered and
-                // the symbol the head is now looking at
                 if tm.pos >= tm.tape.len() {
                     tm.tape.resize(tm.pos + 1, spec.blank());
                 }
-                if spec.at_tick(tm.state, tm.tape[tm.pos]) {
+                let now_at_tick = spec.at_tick(tm.state, tm.tape[tm.pos]);
+                if now_at_tick && !was_at_tick {
                     return Ok(step_count);
                 }
+                was_at_tick = now_at_tick;
             }
             RunningTMStatus::Accepted => {
                 return Err(RunUntilResult::Accepted {

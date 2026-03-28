@@ -734,16 +734,10 @@ fn assert_tick_faithful<Spec: TuringMachineSpec>(
     let mut utm_tm = RunningTuringMachine::new(&utm_spec);
     utm_tm.tape = encoded;
 
-    // Freshly created UTM should be at a tick
-    assert!(
-        utm_spec.at_tick(utm_tm.state, utm_tm.tape[utm_tm.pos]),
-        "freshly created UTM should be at a tick"
-    );
-
-    // Decode at initial tick should match initial guest
+    // Decode of freshly encoded tape should match initial guest
     let decoded = utm_spec
         .decode(guest_spec, &utm_tm.tape)
-        .expect("decode at initial tick");
+        .expect("decode at initial state");
     assert_eq!(decoded.state, guest_tm.state, "initial state mismatch");
     assert_eq!(decoded.pos, guest_tm.pos, "initial pos mismatch");
     assert_eq!(decoded.tape, guest_tm.tape, "initial tape mismatch");

@@ -11,9 +11,8 @@ pub trait UtmSpec: TuringMachineSpec {
         tape: &[Self::Symbol],
     ) -> Result<RunningTuringMachine<'a, Guest>, String>;
 
-    /// Returns true when the UTM is at a "tick" boundary: once for a freshly
-    /// created machine (before any steps), and once per completed inner step
-    /// thereafter. Decoding the tape at a tick should yield a valid snapshot
-    /// of the guest machine.
+    /// Returns true once per completed inner step. Decoding the tape at a
+    /// tick should yield a valid snapshot of the guest machine after one
+    /// more step than at the previous tick.
     fn at_tick(&self, state: Self::State, symbol: Self::Symbol) -> bool;
 }
