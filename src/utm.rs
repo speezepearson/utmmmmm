@@ -3,7 +3,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     hash::Hash,
 };
 
@@ -13,7 +13,9 @@ use crate::{
 };
 
 // ── Newtype wrappers for type safety ──
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum State {
     Accept,
     AcceptSeekHome,
@@ -397,7 +399,7 @@ const ALL_STATES: [State; 189] = [
     State::SymSkipState,
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Symbol {
     Blank,
     Zero,
@@ -541,10 +543,10 @@ fn from_binary_at(tape: &[Symbol], start: usize, width: usize) -> usize {
 }
 
 // ── RuleSet: transition table + ordered list for encoding ──
-struct RuleSet(HashMap<(State, Symbol), (State, Symbol, Dir)>);
+struct RuleSet(BTreeMap<(State, Symbol), (State, Symbol, Dir)>);
 impl RuleSet {
     fn new() -> Self {
-        Self(HashMap::new())
+        Self(BTreeMap::new())
     }
 
     fn add(&mut self, state: State, sym: Symbol, new_state: State, new_sym: Symbol, dir: Dir) {
@@ -682,10 +684,7 @@ fn build_utm_rules() -> RuleSet {
     r.add(CmpStRead, Pipe, StMatchCleanup, Pipe, Dir::Right);
     r.add(CmpStRead, Comma, StMatchCleanup, Comma, Dir::Right);
 
-    for (c_sym, carry, find) in [
-        (Zero, CmpStC0, CmpStC0Find),
-        (One, CmpStC1, CmpStC1Find),
-    ] {
+    for (c_sym, carry, find) in [(Zero, CmpStC0, CmpStC0Find), (One, CmpStC1, CmpStC1Find)] {
         scan_right(&mut r, carry, rule_all);
         r.add(carry, Hash, find, Hash, Dir::Right);
 
@@ -1060,13 +1059,9 @@ fn build_utm_rules() -> RuleSet {
     // Carry to head cell: skip rules, STATE, SYMCACHE, find ^
     for c in [0u8, 1u8] {
         let (carry, s1, s2, fh, fb, mark) = if c == 0 {
-            (
-                CpNsymC0, CpNsymC0S1, CpNsymC0S2, CpNsymC0Fh, CpNsymC0Fb, X,
-            )
+            (CpNsymC0, CpNsymC0S1, CpNsymC0S2, CpNsymC0Fh, CpNsymC0Fb, X)
         } else {
-            (
-                CpNsymC1, CpNsymC1S1, CpNsymC1S2, CpNsymC1Fh, CpNsymC1Fb, Y,
-            )
+            (CpNsymC1, CpNsymC1S1, CpNsymC1S2, CpNsymC1Fh, CpNsymC1Fb, Y)
         };
 
         scan_right(&mut r, carry, rule_all);
@@ -1959,7 +1954,13 @@ pub fn serialize_rules(rules: &[GuestRule], n_state_bits: usize, n_sym_bits: usi
 /// Consecutive noop rules for the same (state, direction) are grouped.
 /// The group is placed at the position of the last member.
 pub fn group_rules<Guest: TuringMachineSpec>(
-    ordered_rules: &[(Guest::State, Guest::Symbol, Guest::State, Guest::Symbol, Dir)],
+    ordered_rules: &[(
+        Guest::State,
+        Guest::Symbol,
+        Guest::State,
+        Guest::Symbol,
+        Dir,
+    )],
     state_encodings: &HashMap<Guest::State, usize>,
     symbol_encodings: &HashMap<Guest::Symbol, usize>,
 ) -> Vec<GuestRule> {
@@ -2140,7 +2141,7 @@ impl MyUtmSpec {
 pub fn make_utm_spec() -> MyUtmSpec {
     SimpleTuringMachineSpec {
         initial: State::Init,
-        accepting: HashSet::from([State::Accept]),
+        accepting: BTreeSet::from([State::Accept]),
         blank: Symbol::Blank,
         transitions: build_utm_rules().0,
         all_states: ALL_STATES.to_vec(),

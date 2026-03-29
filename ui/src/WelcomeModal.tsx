@@ -28,10 +28,7 @@ export function WelcomeModal() {
 
   const snapshot = useMemo(
     () =>
-      makeInitSnapshot(
-        flipBitsSpec.spec,
-        welcomeModalExample.bitFlipperInput,
-      ),
+      makeInitSnapshot(flipBitsSpec.spec, welcomeModalExample.bitFlipperInput),
     [welcomeModalExample],
   );
 

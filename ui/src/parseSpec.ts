@@ -72,4 +72,5 @@ export const RustExportSchema = z.object({
 
 export const rustExport = RustExportSchema.parse(rawRustExport);
 
-export const machineSpecs: ParsedSpec[] = rustExport.machineSpecs.map(parseSpec);
+export const machineSpecs: ParsedSpec[] =
+  rustExport.machineSpecs.map(parseSpec);

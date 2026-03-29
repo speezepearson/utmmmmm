@@ -394,18 +394,25 @@ fn main() {
     };
     let bit_flipper_input: Vec<String> = flip_bits_tape
         .iter()
-        .map(|s| match s {
-            FlipBitsSymbol::Blank => "_",
-            FlipBitsSymbol::Zero => "0",
-            FlipBitsSymbol::One => "1",
-        }.to_string())
+        .map(|s| {
+            match s {
+                FlipBitsSymbol::Blank => "_",
+                FlipBitsSymbol::Zero => "0",
+                FlipBitsSymbol::One => "1",
+            }
+            .to_string()
+        })
         .collect();
 
     // utmInput: UTM tape encoding the flip-bits machine (L1)
     let utm_input: Vec<String> = {
         let mut guest = RunningTuringMachine::new(&*FLIP_BITS_SPEC);
         guest.tape = flip_bits_tape.clone();
-        utm_spec.encode(&guest).iter().map(|s| utm_symbol_to_string(*s)).collect()
+        utm_spec
+            .encode(&guest)
+            .iter()
+            .map(|s| utm_symbol_to_string(*s))
+            .collect()
     };
 
     // doubleUtmInput: UTM tape encoding UTM-simulating-flip-bits (L2)
@@ -415,12 +422,19 @@ fn main() {
         let l1_tape = utm_spec.encode(&guest);
         let mut l1_tm = RunningTuringMachine::new(&utm_spec);
         l1_tm.tape = l1_tape;
-        utm_spec.encode(&l1_tm).iter().map(|s| utm_symbol_to_string(*s)).collect()
+        utm_spec
+            .encode(&l1_tm)
+            .iter()
+            .map(|s| utm_symbol_to_string(*s))
+            .collect()
     };
 
     // Reuse the flip bits and UTM specs already in `specs` for the welcome modal
     let bit_flipper_idx = specs.iter().position(|s| s.name == "Flip Bits").unwrap();
-    let utm_idx = specs.iter().position(|s| s.name == "Universal Turing Machine").unwrap();
+    let utm_idx = specs
+        .iter()
+        .position(|s| s.name == "Universal Turing Machine")
+        .unwrap();
 
     // We need owned copies for the welcome modal example
     let bit_flipper_spec = export_spec(
