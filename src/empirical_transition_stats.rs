@@ -5,13 +5,8 @@
 use std::collections::HashMap;
 
 use crate::utm::{
-    make_utm_spec, MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol, TmTransitionStats,
+    MyUtmSpec, State, Symbol, TmTransitionStats,
 };
-
-pub fn make_my_utm_self_optimization_hints() -> MyUtmSpecOptimizationHints<MyUtmSpec> {
-    let stats = make_empirical_transition_stats();
-    stats.make_optimization_hints(&make_utm_spec())
-}
 
 pub fn make_empirical_transition_stats() -> TmTransitionStats<MyUtmSpec> {
     TmTransitionStats(HashMap::from([

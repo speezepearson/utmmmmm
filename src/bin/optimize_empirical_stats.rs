@@ -63,13 +63,7 @@ fn codegen(stats: &TmTransitionStats<MyUtmSpec>) -> String {
     code.push_str("// This file contains empirically-derived transition statistics\n");
     code.push_str("// for optimizing UTM rule ordering.\n\n");
     code.push_str("use std::collections::HashMap;\n\n");
-    code.push_str("use crate::utm::{make_utm_spec, MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol, TmTransitionStats};\n\n");
-    code.push_str(
-        "pub fn make_my_utm_self_optimization_hints() -> MyUtmSpecOptimizationHints<MyUtmSpec> {\n",
-    );
-    code.push_str("    let stats = make_empirical_transition_stats();\n");
-    code.push_str("    stats.make_optimization_hints(&make_utm_spec())\n");
-    code.push_str("}\n\n");
+    code.push_str("use crate::utm::{MyUtmSpec, State, Symbol, TmTransitionStats};\n\n");
     code.push_str("pub fn make_empirical_transition_stats() -> TmTransitionStats<MyUtmSpec> {\n");
     code.push_str("    TmTransitionStats(HashMap::from([\n");
 
