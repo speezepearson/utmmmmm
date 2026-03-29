@@ -31,10 +31,7 @@ describe("welcomeModalExample tapes decode correctly", () => {
     const { welcomeModalExample } = rustExport;
 
     // L2 tape -> decode with utmSpec guest -> L1 UTM snapshot
-    const l1 = decodeFromUtm(
-      utm.spec,
-      welcomeModalExample.doubleUtmInput,
-    );
+    const l1 = decodeFromUtm(utm.spec, welcomeModalExample.doubleUtmInput);
 
     // L1 tape -> decode with flipBitsSpec guest -> flip-bits snapshot
     const l0 = decodeFromUtm(flipBits.spec, l1.tape);

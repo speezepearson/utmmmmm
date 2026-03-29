@@ -4,7 +4,9 @@
 
 use std::collections::HashMap;
 
-use crate::utm::{make_utm_spec, MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol, TmTransitionStats};
+use crate::utm::{
+    make_utm_spec, MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol, TmTransitionStats,
+};
 
 pub fn make_my_utm_self_optimization_hints() -> MyUtmSpecOptimizationHints<MyUtmSpec> {
     let stats = make_empirical_transition_stats();

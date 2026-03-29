@@ -72,11 +72,15 @@ impl<State: Copy + PartialEq + Eq + Hash, Symbol: Copy + PartialEq + Eq + Hash> 
     fn iter_rules(
         &self,
     ) -> impl Iterator<Item = (Self::State, Self::Symbol, Self::State, Self::Symbol, Dir)> {
-        self.transitions
-            .iter()
-            .map(|((state, symbol), (next_state, next_symbol, dir))| {
-                (*state, *symbol, *next_state, *next_symbol, *dir)
-            })
+        let mut rules = Vec::new();
+        for &st in &self.all_states {
+            for &sym in &self.all_symbols {
+                if let Some(&(nst, nsym, dir)) = self.transitions.get(&(st, sym)) {
+                    rules.push((st, sym, nst, nsym, dir));
+                }
+            }
+        }
+        rules.into_iter()
     }
 }
 
