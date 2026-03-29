@@ -48,16 +48,16 @@ export function decodeFromUtm(
   for (let i = 0; i < utmTape.length; i++) {
     if (utmTape[i] === "#") hashes.push(i);
   }
-  if (hashes.length < 5) {
-    throw new Error(`Expected at least 5 # delimiters, found ${hashes.length}`);
+  if (hashes.length < 4) {
+    throw new Error(`Expected at least 4 # delimiters, found ${hashes.length}`);
   }
 
   // STATE section: between hashes[2] and hashes[3]
   const stateStart = hashes[2] + 1;
   const state = guestStates[fromBinary(utmTape, stateStart, nStateBits)];
 
-  // TAPE section: after hashes[4]
-  const tapeStart = hashes[4] + 1;
+  // TAPE section: after hashes[3]
+  const tapeStart = hashes[3] + 1;
   const tapeSection = utmTape.slice(tapeStart);
 
   const cells: number[] = [];
