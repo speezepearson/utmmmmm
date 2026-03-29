@@ -365,11 +365,9 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
 
     // Put one specific rule last
     let utm_spec = make_utm_spec();
-    let encoded = utm_spec.encode_optimized(
-        &tm,
-        &TmTransitionStats(HashMap::from([((FlipBitsState::Flip, Zero), 1)]))
-            .make_optimization_hints(&spec),
-    );
+    let hints = TmTransitionStats(HashMap::from([((FlipBitsState::Flip, Zero), 1)]))
+        .make_optimization_hints(spec);
+    let encoded = utm_spec.encode_optimized(&tm, &hints);
 
     // Run directly
     let mut direct_tm = RunningTuringMachine {
@@ -393,7 +391,7 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
     );
 
     let decoded = utm_spec
-        .decode(spec, &utm_tm.tape)
+        .decode_optimized(spec, &utm_tm.tape, &hints)
         .expect("should decode UTM tape");
     strip_trailing_blanks(&mut direct_tm);
     let mut decoded_stripped = decoded;
@@ -1044,7 +1042,8 @@ fn test_serialize_single_rule() {
         new_sym: 0,
         dir: Dir::Left,
     };
-    let syms = rule.serialize(1, 2);
+    let state_codes = vec![vec![Symbol::Zero], vec![Symbol::One]];
+    let syms = rule.serialize(&state_codes, 2);
     // . 0 | 01 | 1 | 00 | L
     assert_eq!(
         syms,
@@ -1072,7 +1071,13 @@ fn test_serialize_noop_group() {
         syms: vec![0, 2, 3],
         dir: Dir::Right,
     };
-    let syms = rule.serialize(2, 2);
+    let state_codes = vec![
+        vec![Symbol::Zero, Symbol::Zero],
+        vec![Symbol::Zero, Symbol::One],
+        vec![Symbol::One, Symbol::Zero],
+        vec![Symbol::One, Symbol::One],
+    ];
+    let syms = rule.serialize(&state_codes, 2);
     // . 01 , 1 , 00 | R
     // Prefixes sorted shortest-first: "1" (covers syms 2,3) before "00" (sym 0)
     assert_eq!(
@@ -1108,7 +1113,8 @@ fn test_serialize_rules_semicolons() {
             dir: Dir::Right,
         },
     ];
-    let tape = serialize_rules(&rules, 1, 2);
+    let state_codes = vec![vec![Symbol::Zero], vec![Symbol::One]];
+    let tape = serialize_rules(&rules, &state_codes, 2);
     // Rules should be separated by ;
     let semi_count = tape.iter().filter(|&&s| s == Symbol::Semi).count();
     assert_eq!(

@@ -488,6 +488,147 @@ pub fn to_binary(index: usize, width: usize) -> Vec<Symbol> {
     bits
 }
 
+/// Build Huffman codes for `n` items with given frequencies.
+/// Returns a Vec of length `n` where each entry is the Huffman code
+/// as a sequence of Symbol::Zero and Symbol::One.
+/// Items with higher frequency get shorter codes.
+pub fn build_huffman_codes(n: usize, frequencies: &[usize]) -> Vec<Vec<Symbol>> {
+    assert_eq!(n, frequencies.len());
+    if n == 0 {
+        return vec![];
+    }
+    if n == 1 {
+        return vec![vec![Symbol::Zero]];
+    }
+
+    use std::cmp::Reverse;
+    use std::collections::BinaryHeap;
+
+    // (frequency, tie-breaker, node_id)
+    let mut heap: BinaryHeap<Reverse<(usize, usize, usize)>> = BinaryHeap::new();
+    for i in 0..n {
+        heap.push(Reverse((frequencies[i], i, i)));
+    }
+
+    let mut children: Vec<(usize, usize)> = vec![(0, 0); 2 * n];
+    let mut next_id = n;
+    let mut tie_breaker = n;
+
+    while heap.len() > 1 {
+        let Reverse((f1, _, id1)) = heap.pop().unwrap();
+        let Reverse((f2, _, id2)) = heap.pop().unwrap();
+        children[next_id] = (id1, id2);
+        heap.push(Reverse((f1 + f2, tie_breaker, next_id)));
+        tie_breaker += 1;
+        next_id += 1;
+    }
+
+    let Reverse((_, _, root)) = heap.pop().unwrap();
+
+    // DFS to assign codes
+    let mut codes = vec![vec![]; n];
+    let mut stack: Vec<(usize, Vec<Symbol>)> = vec![(root, vec![])];
+    while let Some((node, code)) = stack.pop() {
+        if node < n {
+            codes[node] = code;
+        } else {
+            let (left, right) = children[node];
+            let mut left_code = code.clone();
+            left_code.push(Symbol::Zero);
+            stack.push((left, left_code));
+            let mut right_code = code;
+            right_code.push(Symbol::One);
+            stack.push((right, right_code));
+        }
+    }
+
+    codes
+}
+
+/// Compute code lengths for length-limited Huffman coding.
+/// Assigns shorter codes to higher-frequency items while ensuring no code
+/// exceeds `max_len` bits. Uses a greedy approach: most frequent items get
+/// the shortest codes within the Kraft inequality constraint.
+fn compute_length_limited_huffman_lengths(
+    n: usize,
+    frequencies: &[usize],
+    max_len: usize,
+) -> Vec<usize> {
+    if n == 0 {
+        return vec![];
+    }
+    if n == 1 {
+        return vec![1];
+    }
+
+    let mut lengths = vec![max_len; n];
+
+    // Sort by frequency (descending) for greedy assignment
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| frequencies[b].cmp(&frequencies[a]));
+
+    // Kraft sum: sum(2^(max_len - l_i)) must be <= 2^max_len
+    let limit = 1usize << max_len;
+    let mut used = n; // All at max_len: each contributes 2^0 = 1
+
+    // Greedily shorten codes for the most frequent items
+    for &idx in &order {
+        while lengths[idx] > 1 {
+            let old_contrib = 1usize << (max_len - lengths[idx]);
+            let new_contrib = 1usize << (max_len - (lengths[idx] - 1));
+            let delta = new_contrib - old_contrib;
+            if used + delta <= limit {
+                used += delta;
+                lengths[idx] -= 1;
+            } else {
+                break;
+            }
+        }
+    }
+
+    lengths
+}
+
+/// Build prefix-free codes from given code lengths using canonical Huffman coding.
+/// Codes are assigned in order of (length, index) so that shorter codes come first
+/// and codes of the same length are ordered by symbol index.
+fn canonical_codes_from_lengths(lengths: &[usize]) -> Vec<Vec<Symbol>> {
+    let n = lengths.len();
+    if n == 0 {
+        return vec![];
+    }
+
+    // Sort by (length, index) for canonical assignment
+    let mut order: Vec<usize> = (0..n).collect();
+    order.sort_by(|&a, &b| lengths[a].cmp(&lengths[b]).then(a.cmp(&b)));
+
+    let mut codes = vec![vec![]; n];
+    let mut code: usize = 0;
+    let mut prev_len = lengths[order[0]];
+
+    for (i, &idx) in order.iter().enumerate() {
+        if i > 0 {
+            code += 1;
+            code <<= lengths[idx] - prev_len;
+        }
+        prev_len = lengths[idx];
+        codes[idx] = to_binary(code, lengths[idx]);
+    }
+
+    codes
+}
+
+/// Build length-limited Huffman codes: variable-length prefix-free codes
+/// where no code exceeds `max_len` bits. More frequent items get shorter codes.
+pub fn build_length_limited_huffman_codes(
+    n: usize,
+    frequencies: &[usize],
+    max_len: usize,
+) -> Vec<Vec<Symbol>> {
+    let lengths = compute_length_limited_huffman_lengths(n, frequencies, max_len);
+    canonical_codes_from_lengths(&lengths)
+}
+
 fn from_binary_at(tape: &[Symbol], start: usize, width: usize) -> usize {
     let mut val = 0;
     for i in 0..width {
@@ -1555,70 +1696,7 @@ impl UtmSpec for MyUtmSpec {
         guest: &'a Guest,
         tape: &[Self::Symbol],
     ) -> Result<RunningTuringMachine<'a, Guest>, String> {
-        let guest_states: Vec<Guest::State> = guest.iter_states().collect();
-        let guest_symbols: Vec<Guest::Symbol> = guest.iter_symbols().collect();
-
-        let n_state_bits = num_bits(guest_states.len());
-        let n_sym_bits = num_bits(guest_symbols.len());
-
-        // Find the sections separated by #
-        // Layout: $ ACC #[0] BLANK #[1] RULES #[2] STATE #[3] TAPE
-        let mut hashes: Vec<usize> = Vec::new();
-        for (i, &s) in tape.iter().enumerate() {
-            if s == Symbol::Hash {
-                hashes.push(i);
-            }
-        }
-
-        if hashes.len() < 4 {
-            return Err(format!(
-                "expected at least 4 # delimiters, found {}",
-                hashes.len()
-            ));
-        }
-
-        let state_start = hashes[2] + 1;
-        let state = guest_states[from_binary_at(tape, state_start, n_state_bits)];
-
-        let tape_start = hashes[3] + 1;
-        let tape_end = tape.len();
-
-        let tape_section = &tape[tape_start..tape_end];
-        let mut cells: Vec<usize> = Vec::new();
-        let mut head_pos: usize = 0;
-        let mut i = 0;
-        let mut cell_idx = 0;
-        while i < tape_section.len() {
-            let s = tape_section[i];
-            if s == Symbol::Blank || s == Symbol::Dollar {
-                break;
-            }
-            if s == Symbol::Comma {
-                i += 1;
-                cell_idx += 1;
-                continue;
-            }
-            if s == Symbol::Caret || s == Symbol::Gt {
-                if s == Symbol::Caret {
-                    head_pos = cell_idx;
-                }
-                i += 1;
-                continue;
-            }
-            if i + n_sym_bits > tape_section.len() {
-                break;
-            }
-            let val = from_binary_at(tape_section, i, n_sym_bits);
-            cells.push(val);
-            i += n_sym_bits;
-        }
-
-        Ok(RunningTuringMachine {
-            spec: guest,
-            state,
-            pos: head_pos,
-            tape: cells.iter().map(|&i| guest_symbols[i]).collect(),
-        })
+        self.decode_optimized(guest, tape, &MyUtmSpecOptimizationHints::guess(guest))
     }
 
     fn is_tick_boundary(&self, prev_state: State, state: State) -> bool {
@@ -1678,10 +1756,32 @@ impl<Guest: TuringMachineSpec> Default for TmTransitionStats<Guest> {
 }
 impl<Guest: TuringMachineSpec> TmTransitionStats<Guest> {
     pub fn make_optimization_hints(&self, guest: &Guest) -> MyUtmSpecOptimizationHints<Guest> {
+        let state_encodings = self.get_optimal_state_encoding(guest);
+        let symbol_encodings = self.get_optimal_symbol_encoding(guest);
+        let n = state_encodings.len();
+        let state_codes = if self.0.is_empty() {
+            // No stats: use fixed-width binary (backward compatible with guess())
+            let width = num_bits(n);
+            (0..n).map(|i| to_binary(i, width)).collect()
+        } else {
+            // Build length-limited Huffman codes based on state frequencies.
+            // The max length is capped at num_bits(n) so the STATE section
+            // never exceeds fixed-width size. Frequent states get shorter codes,
+            // making rules shorter and faster to scan.
+            let max_len = num_bits(n);
+            let mut frequencies = vec![1usize; n];
+            for ((state, _symbol), &count) in &self.0 {
+                if let Some(&idx) = state_encodings.get(state) {
+                    frequencies[idx] += count;
+                }
+            }
+            build_length_limited_huffman_codes(n, &frequencies, max_len)
+        };
         MyUtmSpecOptimizationHints {
             transition_stats: self.0.clone(),
-            state_encodings: self.get_optimal_state_encoding(guest),
-            symbol_encodings: self.get_optimal_symbol_encoding(guest),
+            state_encodings,
+            symbol_encodings,
+            state_codes,
         }
     }
 
@@ -1778,7 +1878,8 @@ fn compress_prefixes_rec(
 
 impl GuestRule {
     /// Serialize this rule into UTM tape symbols.
-    pub fn serialize(&self, n_state_bits: usize, n_sym_bits: usize) -> Vec<Symbol> {
+    /// `state_codes` maps state encoding index → Huffman code (variable-length binary).
+    pub fn serialize(&self, state_codes: &[Vec<Symbol>], n_sym_bits: usize) -> Vec<Symbol> {
         let mut out = Vec::new();
         match self {
             GuestRule::Single {
@@ -1789,11 +1890,11 @@ impl GuestRule {
                 dir,
             } => {
                 out.push(Symbol::Dot);
-                out.extend_from_slice(&to_binary(*state, n_state_bits));
+                out.extend_from_slice(&state_codes[*state]);
                 out.push(Symbol::Pipe);
                 out.extend_from_slice(&to_binary(*sym, n_sym_bits));
                 out.push(Symbol::Pipe);
-                out.extend_from_slice(&to_binary(*new_state, n_state_bits));
+                out.extend_from_slice(&state_codes[*new_state]);
                 out.push(Symbol::Pipe);
                 out.extend_from_slice(&to_binary(*new_sym, n_sym_bits));
                 out.push(Symbol::Pipe);
@@ -1804,7 +1905,7 @@ impl GuestRule {
             }
             GuestRule::NoopGroup { state, syms, dir } => {
                 out.push(Symbol::Dot);
-                out.extend_from_slice(&to_binary(*state, n_state_bits));
+                out.extend_from_slice(&state_codes[*state]);
                 let prefixes = compress_prefixes(syms, n_sym_bits);
                 for prefix in &prefixes {
                     out.push(Symbol::Comma);
@@ -1822,13 +1923,13 @@ impl GuestRule {
 }
 
 /// Serialize a list of GuestRules into the RULES section content (without surrounding #).
-pub fn serialize_rules(rules: &[GuestRule], n_state_bits: usize, n_sym_bits: usize) -> Vec<Symbol> {
+pub fn serialize_rules(rules: &[GuestRule], state_codes: &[Vec<Symbol>], n_sym_bits: usize) -> Vec<Symbol> {
     let mut tape = Vec::new();
     for (i, rule) in rules.iter().enumerate() {
         if i > 0 {
             tape.push(Symbol::Semi);
         }
-        tape.extend(rule.serialize(n_state_bits, n_sym_bits));
+        tape.extend(rule.serialize(state_codes, n_sym_bits));
     }
     tape
 }
@@ -1920,6 +2021,9 @@ pub struct MyUtmSpecOptimizationHints<Guest: TuringMachineSpec> {
     pub transition_stats: HashMap<(Guest::State, Guest::Symbol), usize>,
     pub state_encodings: HashMap<Guest::State, usize>,
     pub symbol_encodings: HashMap<Guest::Symbol, usize>,
+    /// Huffman codes for each state, indexed by state encoding index.
+    /// More frequent states get shorter codes.
+    pub state_codes: Vec<Vec<Symbol>>,
 }
 impl<Guest: TuringMachineSpec> MyUtmSpecOptimizationHints<Guest> {
     pub fn guess(guest: &Guest) -> Self {
@@ -1944,8 +2048,8 @@ impl MyUtmSpec {
         if hints.symbol_encodings.len() != guest.spec.iter_symbols().count() {
             panic!("symbol encodings length mismatch");
         }
-        let n_state_bits = num_bits(hints.state_encodings.len());
         let n_sym_bits = num_bits(hints.symbol_encodings.len());
+        let max_state_code_len = hints.state_codes.iter().map(|c| c.len()).max().unwrap_or(1);
 
         let all_rules: Vec<_> = guest.spec.iter_rules().collect();
 
@@ -1954,7 +2058,7 @@ impl MyUtmSpec {
 
         // Layout: $ ACCEPT # BLANK # RULES # STATE # TAPE
 
-        // ACCEPT section (right after $)
+        // ACCEPT section (right after $): variable-length Huffman codes
         for (i, state) in guest
             .spec
             .iter_states()
@@ -1964,7 +2068,7 @@ impl MyUtmSpec {
             if i > 0 {
                 tape.push(Symbol::Semi);
             }
-            tape.extend_from_slice(&to_binary(hints.state_encodings[&state], n_state_bits));
+            tape.extend_from_slice(&hints.state_codes[hints.state_encodings[&state]]);
         }
 
         // BLANK section
@@ -1982,14 +2086,15 @@ impl MyUtmSpec {
             &hints.symbol_encodings,
             &hints.transition_stats,
         );
-        tape.extend(serialize_rules(&guest_rules, n_state_bits, n_sym_bits));
+        tape.extend(serialize_rules(&guest_rules, &hints.state_codes, n_sym_bits));
 
-        // STATE section
+        // STATE section: Huffman code padded to max_state_code_len
         tape.push(Symbol::Hash);
-        tape.extend_from_slice(&to_binary(
-            hints.state_encodings[&guest.state],
-            n_state_bits,
-        ));
+        let state_code = &hints.state_codes[hints.state_encodings[&guest.state]];
+        tape.extend_from_slice(state_code);
+        for _ in state_code.len()..max_state_code_len {
+            tape.push(Symbol::Zero);
+        }
 
         // TAPE section
         tape.push(Symbol::Hash);
@@ -2009,6 +2114,114 @@ impl MyUtmSpec {
         tape[caret_pos] = Symbol::Caret;
 
         tape
+    }
+
+    /// Decode a UTM tape back into a guest TM snapshot, using the same
+    /// optimization hints that were used for encoding.
+    pub fn decode_optimized<'a, Guest: TuringMachineSpec>(
+        &self,
+        guest: &'a Guest,
+        tape: &[Symbol],
+        hints: &MyUtmSpecOptimizationHints<Guest>,
+    ) -> Result<RunningTuringMachine<'a, Guest>, String> {
+        let guest_symbols: Vec<Guest::Symbol> = guest.iter_symbols().collect();
+        let n_sym_bits = num_bits(guest_symbols.len());
+
+        // Build reverse state mapping: encoding index → Guest::State
+        let state_reverse: HashMap<usize, Guest::State> = hints
+            .state_encodings
+            .iter()
+            .map(|(&s, &i)| (i, s))
+            .collect();
+
+        // Find the sections separated by #
+        // Layout: $ ACC #[0] BLANK #[1] RULES #[2] STATE #[3] TAPE
+        let mut hashes: Vec<usize> = Vec::new();
+        for (i, &s) in tape.iter().enumerate() {
+            if s == Symbol::Hash {
+                hashes.push(i);
+            }
+        }
+
+        if hashes.len() < 4 {
+            return Err(format!(
+                "expected at least 4 # delimiters, found {}",
+                hashes.len()
+            ));
+        }
+
+        // Decode STATE section using Huffman codes (prefix-free matching)
+        let state_start = hashes[2] + 1;
+        let state = {
+            let mut matched = None;
+            for (idx, code) in hints.state_codes.iter().enumerate() {
+                let mut ok = true;
+                for (j, &bit) in code.iter().enumerate() {
+                    if state_start + j >= tape.len() {
+                        ok = false;
+                        break;
+                    }
+                    let tape_bit = match tape[state_start + j] {
+                        Symbol::One | Symbol::Y => Symbol::One,
+                        Symbol::Zero | Symbol::X => Symbol::Zero,
+                        _ => {
+                            ok = false;
+                            break;
+                        }
+                    };
+                    if tape_bit != bit {
+                        ok = false;
+                        break;
+                    }
+                }
+                if ok {
+                    matched = Some(idx);
+                    break;
+                }
+            }
+            let idx = matched.ok_or_else(|| "no Huffman code matched STATE section".to_string())?;
+            state_reverse[&idx]
+        };
+
+        let tape_start = hashes[3] + 1;
+        let tape_end = tape.len();
+
+        let tape_section = &tape[tape_start..tape_end];
+        let mut cells: Vec<usize> = Vec::new();
+        let mut head_pos: usize = 0;
+        let mut i = 0;
+        let mut cell_idx = 0;
+        while i < tape_section.len() {
+            let s = tape_section[i];
+            if s == Symbol::Blank || s == Symbol::Dollar {
+                break;
+            }
+            if s == Symbol::Comma {
+                i += 1;
+                cell_idx += 1;
+                continue;
+            }
+            if s == Symbol::Caret || s == Symbol::Gt {
+                if s == Symbol::Caret {
+                    head_pos = cell_idx;
+                }
+                i += 1;
+                continue;
+            }
+            if i + n_sym_bits > tape_section.len() {
+                break;
+            }
+            let val = from_binary_at(tape_section, i, n_sym_bits);
+            cells.push(val);
+            i += n_sym_bits;
+        }
+
+        Ok(RunningTuringMachine {
+            spec: guest,
+            state,
+            pos: head_pos,
+            tape: cells.iter().map(|&i| guest_symbols[i]).collect(),
+        })
     }
 }
 
