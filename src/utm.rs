@@ -142,6 +142,11 @@ pub enum State {
     MrS2,
     MrS3,
     MrSkipCell,
+    NpMatchPre,
+    NpNextbit,
+    NpReadDir,
+    NpSmcHandler,
+    NpSymfRestore,
     RdRead,
     RdSk2,
     RdSk3,
@@ -182,7 +187,7 @@ pub enum State {
     SymMatchCleanup,
     SymSkipState,
 }
-const ALL_STATES: [State; 166] = [
+const ALL_STATES: [State; 171] = [
     State::Accept,
     State::AcceptSeekHome,
     State::AccFinalHome,
@@ -310,6 +315,11 @@ const ALL_STATES: [State; 166] = [
     State::MrS2,
     State::MrS3,
     State::MrSkipCell,
+    State::NpMatchPre,
+    State::NpNextbit,
+    State::NpReadDir,
+    State::NpSmcHandler,
+    State::NpSymfRestore,
     State::RdRead,
     State::RdSk2,
     State::RdSk3,
@@ -583,8 +593,8 @@ fn build_utm_rules() -> RuleSet {
     let mut r = RuleSet::new();
 
     // Symbol groups
-    let rule_internals: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R];
-    let rule_all: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R, Semi, Dot, Star];
+    let rule_internals: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R, Comma];
+    let rule_all: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R, Semi, Dot, Star, Comma];
     let bits: &[Symbol] = &[Zero, One];
     let marked_bits: &[Symbol] = &[X, Y];
     let bits_and_marked: &[Symbol] = &[Zero, One, X, Y];
@@ -627,6 +637,7 @@ fn build_utm_rules() -> RuleSet {
     r.add(CmpStRead, Zero, CmpStC0, X, Dir::Right);
     r.add(CmpStRead, One, CmpStC1, Y, Dir::Right);
     r.add(CmpStRead, Pipe, StMatchCleanup, Pipe, Dir::Right);
+    r.add(CmpStRead, Comma, StMatchCleanup, Comma, Dir::Right);
 
     for (c_sym, carry, sk1, find) in [
         (Zero, CmpStC0, CmpStC0Sk1, CmpStC0Find),
@@ -658,6 +669,7 @@ fn build_utm_rules() -> RuleSet {
         r.add(nb, Zero, CmpStC0, X, Dir::Right);
         r.add(nb, One, CmpStC1, Y, Dir::Right);
         r.add(nb, Pipe, StMatchCleanup, Pipe, Dir::Right);
+        r.add(nb, Comma, StMatchCleanup, Comma, Dir::Right);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -672,6 +684,7 @@ fn build_utm_rules() -> RuleSet {
     {
         let gl = StmGoLeft;
         r.add(gl, Pipe, StmRestoreRule, Pipe, Dir::Left);
+        r.add(gl, Comma, StmRestoreRule, Comma, Dir::Left);
         scan_left(&mut r, gl, bits);
     }
     {
@@ -709,6 +722,8 @@ fn build_utm_rules() -> RuleSet {
         let ss = SymSkipState;
         scan_right(&mut r, ss, bits);
         r.add(ss, Pipe, CmpSymRead, Pipe, Dir::Right);
+        // Noop rule: mark first comma as Caret to track current alternative
+        r.add(ss, Comma, CmpSymRead, Caret, Dir::Right);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -728,7 +743,7 @@ fn build_utm_rules() -> RuleSet {
     }
     {
         let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-        syms.extend_from_slice(&[Semi, Hash, Pipe, Dot, L, R]);
+        syms.extend_from_slice(&[Semi, Hash, Pipe, Dot, L, R, Comma]);
         scan_left(&mut r, StfFindStar, &syms);
         r.add(StfFindStar, Star, StfRestoreRule, Dot, Dir::Right);
     }
@@ -738,6 +753,7 @@ fn build_utm_rules() -> RuleSet {
         r.add(rr, Y, rr, One, Dir::Right);
         scan_right(&mut r, rr, bits);
         r.add(rr, Pipe, StfGoPrev, Pipe, Dir::Left);
+        r.add(rr, Comma, StfGoPrev, Comma, Dir::Left);
     }
     {
         let gp = StfGoPrev;
@@ -801,8 +817,11 @@ fn build_utm_rules() -> RuleSet {
     {
         seek_star(&mut r, CmpSymOk, CmpSymNextbit);
         let nb = CmpSymNextbit;
-        scan_right(&mut r, nb, bits);
+        // For noop rules, scan past commas between alternatives to reach Caret
+        scan_right(&mut r, nb, &[Zero, One, Comma]);
         r.add(nb, Pipe, CmpSymNb2, Pipe, Dir::Right);
+        // Noop: caret marks current alternative
+        r.add(nb, Caret, NpNextbit, Caret, Dir::Right);
     }
     {
         let nb2 = CmpSymNb2;
@@ -810,6 +829,22 @@ fn build_utm_rules() -> RuleSet {
         r.add(nb2, Zero, CmpSymC0, X, Dir::Right);
         r.add(nb2, One, CmpSymC1, Y, Dir::Right);
         r.add(nb2, Pipe, SymMatchCleanup, Pipe, Dir::Right);
+    }
+    // ── Noop: NpNextbit - skip marked bits, read next bit or end-of-symbol
+    {
+        let np = NpNextbit;
+        scan_right(&mut r, np, marked_bits);
+        r.add(np, Zero, CmpSymC0, X, Dir::Right);
+        r.add(np, One, CmpSymC1, Y, Dir::Right);
+        // End of current noop symbol: all bits matched!
+        r.add(np, Comma, NpMatchPre, Comma, Dir::Left);
+        r.add(np, Pipe, NpMatchPre, Pipe, Dir::Left);
+    }
+    // ── Noop match: scan left to Caret, restore to Comma, enter SymMatchCleanup
+    {
+        let mp = NpMatchPre;
+        scan_left(&mut r, mp, marked_bits);
+        r.add(mp, Caret, SymMatchCleanup, Comma, Dir::Right);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -833,8 +868,22 @@ fn build_utm_rules() -> RuleSet {
     }
     {
         let ss = SymfSkipSt;
-        scan_right(&mut r, ss, bits);
+        // For noop rules, scan past commas to reach Caret (current alternative marker)
+        scan_right(&mut r, ss, &[Zero, One, Comma]);
         r.add(ss, Pipe, SymfRestSym, Pipe, Dir::Right);
+        // Noop: found current alternative marker
+        r.add(ss, Caret, NpSymfRestore, Comma, Dir::Right);
+    }
+    // ── Noop mismatch: restore current alt marks, try next or deactivate
+    {
+        let nr = NpSymfRestore;
+        r.add(nr, X, nr, Zero, Dir::Right);
+        r.add(nr, Y, nr, One, Dir::Right);
+        scan_right(&mut r, nr, bits);
+        // Next alternative: mark comma as caret, re-enter symbol comparison
+        r.add(nr, Comma, CmpSymRead, Caret, Dir::Right);
+        // No more alternatives: deactivate rule
+        r.add(nr, Pipe, SymfDeactivate, Pipe, Dir::Left);
     }
     {
         let rs = SymfRestSym;
@@ -847,6 +896,7 @@ fn build_utm_rules() -> RuleSet {
         let da = SymfDeactivate;
         let mut syms: Vec<Symbol> = bits.to_vec();
         syms.push(Pipe);
+        syms.push(Comma);
         scan_left(&mut r, da, &syms);
         r.add(da, Star, MarkRule, Dot, Dir::Left);
     }
@@ -900,6 +950,20 @@ fn build_utm_rules() -> RuleSet {
         let ss = SmcSkipSt;
         scan_right(&mut r, ss, bits);
         r.add(ss, Pipe, SmcRestSym, Pipe, Dir::Right);
+        // Noop: after cleanup, skip all symbol alternatives to direction
+        r.add(ss, Comma, NpSmcHandler, Comma, Dir::Right);
+    }
+    // ── Noop post-match: restore marks, skip to | and read direction
+    {
+        let h = NpSmcHandler;
+        r.add(h, X, h, Zero, Dir::Right);
+        r.add(h, Y, h, One, Dir::Right);
+        scan_right(&mut r, h, &[Zero, One, Comma]);
+        r.add(h, Pipe, NpReadDir, Pipe, Dir::Right);
+    }
+    {
+        r.add(NpReadDir, L, MoveLeft, L, Dir::Left);
+        r.add(NpReadDir, R, MoveRight, R, Dir::Left);
     }
     {
         let rs = SmcRestSym;
@@ -1161,7 +1225,7 @@ fn build_utm_rules() -> RuleSet {
     {
         let mr = MoveRight;
         let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.extend_from_slice(&[Pipe, L, R]);
+        syms.extend_from_slice(&[Pipe, L, R, Comma]);
         scan_left(&mut r, mr, &syms);
         r.add(mr, Star, MrNav, Dot, Dir::Right);
     }
@@ -1291,7 +1355,7 @@ fn build_utm_rules() -> RuleSet {
     {
         let ml = MoveLeft;
         let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.extend_from_slice(&[Pipe, L, R]);
+        syms.extend_from_slice(&[Pipe, L, R, Comma]);
         scan_left(&mut r, ml, &syms);
         r.add(ml, Star, MlNav, Dot, Dir::Right);
     }
@@ -1740,27 +1804,69 @@ impl MyUtmSpec {
         let mut tape: Vec<Symbol> = Vec::new();
         tape.push(Symbol::Dollar);
 
+        // Identify noop rules: (state, sym) -> (state, sym, dir) where nst==st && nsym==sym
+        // Group noop rules by (state_encoding, dir) for compact encoding
+        let mut noop_groups: HashMap<(usize, Dir), Vec<usize>> = HashMap::new();
+        let mut noop_set: HashSet<(Guest::State, Guest::Symbol)> = HashSet::new();
+        // Track last position of each noop group for placement
+        let mut noop_last_pos: HashMap<(usize, Dir), usize> = HashMap::new();
+        for (i, &&(st, sym, nst, nsym, dir)) in ordered_rules.iter().enumerate() {
+            if nst == st && nsym == sym {
+                let st_idx = hints.state_encodings[&st];
+                let sym_idx = hints.symbol_encodings[&sym];
+                noop_groups.entry((st_idx, dir)).or_default().push(sym_idx);
+                noop_set.insert((st, sym));
+                noop_last_pos.insert((st_idx, dir), i);
+            }
+        }
+
         // RULES section: # .rule1 ; .rule2 ; .rule3 ... #
         tape.push(Symbol::Hash);
         let mut first_rule = true;
-        for &(st, sym, nst, nsym, dir) in &ordered_rules {
-            if !first_rule {
-                tape.push(Symbol::Semi);
+        for (i, &&(st, sym, nst, nsym, dir)) in ordered_rules.iter().enumerate() {
+            let is_noop = noop_set.contains(&(st, sym));
+            if is_noop {
+                // Emit compact noop rule at the position of the last member
+                let st_idx = hints.state_encodings[&st];
+                if noop_last_pos.get(&(st_idx, dir)) != Some(&i) {
+                    continue; // Skip; will be emitted at last position
+                }
+                let syms = &noop_groups[&(st_idx, dir)];
+                if !first_rule {
+                    tape.push(Symbol::Semi);
+                }
+                first_rule = false;
+                // Format: . STATE , SYM1 , SYM2 , ... | DIR
+                tape.push(Symbol::Dot);
+                tape.extend_from_slice(&to_binary(st_idx, n_state_bits));
+                for &sym_idx in syms {
+                    tape.push(Symbol::Comma);
+                    tape.extend_from_slice(&to_binary(sym_idx, n_sym_bits));
+                }
+                tape.push(Symbol::Pipe);
+                tape.push(match dir {
+                    Dir::Left => Symbol::L,
+                    Dir::Right => Symbol::R,
+                });
+            } else {
+                if !first_rule {
+                    tape.push(Symbol::Semi);
+                }
+                first_rule = false;
+                tape.push(Symbol::Dot);
+                tape.extend_from_slice(&to_binary(hints.state_encodings[&st], n_state_bits));
+                tape.push(Symbol::Pipe);
+                tape.extend_from_slice(&to_binary(hints.symbol_encodings[&sym], n_sym_bits));
+                tape.push(Symbol::Pipe);
+                tape.extend_from_slice(&to_binary(hints.state_encodings[&nst], n_state_bits));
+                tape.push(Symbol::Pipe);
+                tape.extend_from_slice(&to_binary(hints.symbol_encodings[&nsym], n_sym_bits));
+                tape.push(Symbol::Pipe);
+                tape.push(match dir {
+                    Dir::Left => Symbol::L,
+                    Dir::Right => Symbol::R,
+                });
             }
-            first_rule = false;
-            tape.push(Symbol::Dot);
-            tape.extend_from_slice(&to_binary(hints.state_encodings[&st], n_state_bits));
-            tape.push(Symbol::Pipe);
-            tape.extend_from_slice(&to_binary(hints.symbol_encodings[&sym], n_sym_bits));
-            tape.push(Symbol::Pipe);
-            tape.extend_from_slice(&to_binary(hints.state_encodings[&nst], n_state_bits));
-            tape.push(Symbol::Pipe);
-            tape.extend_from_slice(&to_binary(hints.symbol_encodings[&nsym], n_sym_bits));
-            tape.push(Symbol::Pipe);
-            tape.push(match dir {
-                Dir::Left => Symbol::L,
-                Dir::Right => Symbol::R,
-            });
         }
 
         tape.push(Symbol::Hash);

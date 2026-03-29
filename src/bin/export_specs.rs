@@ -312,6 +312,13 @@ fn main() {
                 utm::State::RejRestAcc => "rejecting; restoring accept states section marks to 0/1",
                 utm::State::RejRestState => "rejecting; restoring state section marks to 0/1",
                 utm::State::RejFinalHome => "rejecting; seeking $ to enter final reject state",
+
+                // Noop compact rule handling
+                utm::State::NpNextbit => "noop rule; at caret marker, skipping marked bits to read next symbol bit",
+                utm::State::NpMatchPre => "noop rule matched; scanning left to caret to restore before cleanup",
+                utm::State::NpSmcHandler => "noop rule; restoring marks and skipping to direction after match",
+                utm::State::NpReadDir => "noop rule; reading direction L/R",
+                utm::State::NpSymfRestore => "noop rule mismatch; restoring current alternative, trying next",
             }.to_string(),
             |s| format!("{:?}", s),
             |s| match s {

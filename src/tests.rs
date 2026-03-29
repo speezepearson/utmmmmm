@@ -821,3 +821,95 @@ fn test_at_tick_double_x() {
     use DoubleXSymbol::*;
     assert_tick_faithful(&*DOUBLE_X_SPEC, &[Dollar, X, X], 20, 50_000_000);
 }
+
+// ════════════════════════════════════════════════════════════════════
+// Tests: noop compact rule encoding
+// ════════════════════════════════════════════════════════════════════
+
+/// Build a simple TM where state Scan has noop rules (scan right over S0, S1)
+/// and one non-noop rule (Blank -> transition to Done).
+fn make_noop_test_spec() -> crate::tm::SimpleTuringMachineSpec<u8, u8> {
+    // States: 0=Scan, 1=Done
+    // Symbols: 0=Blank, 1=S0, 2=S1
+    crate::tm::SimpleTuringMachineSpec {
+        initial: 0,
+        accepting: std::collections::HashSet::from([1]),
+        blank: 0,
+        transitions: std::collections::HashMap::from([
+            // Noop rules: (Scan, S0) -> (Scan, S0, R), (Scan, S1) -> (Scan, S1, R)
+            ((0u8, 1u8), (0u8, 1u8, crate::tm::Dir::Right)),
+            ((0u8, 2u8), (0u8, 2u8, crate::tm::Dir::Right)),
+            // Non-noop rule: (Scan, Blank) -> (Done, Blank, Left)
+            ((0u8, 0u8), (1u8, 0u8, crate::tm::Dir::Left)),
+        ]),
+        all_states: vec![0, 1],
+        all_symbols: vec![0, 1, 2],
+    }
+}
+
+#[test]
+fn test_noop_encoding_has_commas() {
+    let spec = make_noop_test_spec();
+    let utm = make_utm_spec();
+    let mut tm = RunningTuringMachine::new(&spec);
+    tm.tape = vec![1, 2, 0]; // S0, S1, Blank
+    let encoded = utm.encode(&tm);
+
+    // Find rules section: between first and second #
+    let hashes: Vec<usize> = encoded
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| **s == Symbol::Hash)
+        .map(|(i, _)| i)
+        .collect();
+    let rules_section = &encoded[hashes[0] + 1..hashes[1]];
+
+    // Count commas in rules section - should be 2 (one per noop symbol: ,S0,S1)
+    let comma_count = rules_section
+        .iter()
+        .filter(|s| **s == Symbol::Comma)
+        .count();
+    // State Scan has 2 noop rules (S0 and S1), encoded as . STATE , S0 , S1 | R
+    // That's 2 commas (one before each noop symbol)
+    assert_eq!(
+        comma_count, 2,
+        "Expected 2 commas for 2 noop rules, got {}",
+        comma_count
+    );
+}
+
+#[test]
+fn test_noop_faithful_simple() {
+    let spec = make_noop_test_spec();
+    let mut tm = RunningTuringMachine::new(&spec);
+    tm.tape = vec![1, 2, 0]; // S0, S1, Blank -> should scan right, then go to Done
+    assert_faithful(tm, 100, 1_000_000);
+}
+
+#[test]
+fn test_noop_tick_faithful() {
+    let spec = make_noop_test_spec();
+    assert_tick_faithful(&spec, &[1u8, 2, 1, 2, 0], 6, 10_000_000);
+}
+
+#[test]
+fn test_noop_faithful_flip_bits() {
+    // FlipBits has no noop rules, so this tests that normal rules still work
+    // after the encoding changes.
+    use FlipBitsSymbol::*;
+    let spec = &*FLIP_BITS_SPEC;
+    let mut tm = RunningTuringMachine::new(spec);
+    tm.tape = vec![Zero, One, Zero];
+    assert_faithful(tm, 100, 1_000_000);
+}
+
+#[test]
+fn test_noop_faithful_palindrome() {
+    // Palindrome has many noop rules (SeekR scans right over all letters)
+    use crate::toy_machines::Letter::*;
+    use CheckPalindromeSymbol::*;
+    let spec = &*CHECK_PALINDROME_SPEC;
+    let mut tm = RunningTuringMachine::new(spec);
+    tm.tape = vec![Letter(A), Letter(B), Letter(A)];
+    assert_faithful(tm, 1_000, 50_000_000);
+}
