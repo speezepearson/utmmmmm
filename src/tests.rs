@@ -1057,7 +1057,8 @@ fn test_serialize_noop_group() {
         dir: Dir::Right,
     };
     let syms = rule.serialize(2, 2);
-    // . 01 , 00 , 10 , 11 | R
+    // . 01 , 00 , 1 | R
+    // (syms 2 and 3 share prefix "1" and cover the full subtree)
     assert_eq!(
         syms,
         vec![
@@ -1066,13 +1067,9 @@ fn test_serialize_noop_group() {
             Symbol::One, // state=1
             Symbol::Comma,
             Symbol::Zero,
-            Symbol::Zero, // sym=0
+            Symbol::Zero, // sym=0 (prefix 00)
             Symbol::Comma,
-            Symbol::One,
-            Symbol::Zero, // sym=2
-            Symbol::Comma,
-            Symbol::One,
-            Symbol::One, // sym=3
+            Symbol::One, // syms 2,3 (prefix 1)
             Symbol::Pipe,
             Symbol::R,
         ]

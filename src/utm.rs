@@ -488,22 +488,22 @@ impl<'de> serde::Deserialize<'de> for Symbol {
 }
 
 const ALL_SYMBOLS: [Symbol; 16] = [
-    Symbol::Blank,
     Symbol::Zero,
     Symbol::One,
     Symbol::X,
     Symbol::Y,
-    Symbol::Hash,
+    Symbol::L,
+    Symbol::R,
     Symbol::Pipe,
     Symbol::Semi,
     Symbol::Comma,
+    Symbol::Hash,
     Symbol::Caret,
-    Symbol::L,
-    Symbol::R,
     Symbol::Dot,
     Symbol::Star,
     Symbol::Gt,
     Symbol::Dollar,
+    Symbol::Blank,
 ];
 
 // ── Helpers ──
@@ -1892,6 +1892,57 @@ pub enum GuestRule {
     },
 }
 
+/// Compute minimal prefix-compressed binary representations for a set of symbol indices.
+///
+/// Given a set of indices and a bit width, returns a list of binary prefixes (each
+/// potentially shorter than `n_bits`) that exactly cover the input set. For example,
+/// with `n_bits=4`, indices `{0,1,2,3,4,5,6,7,8,9,10}` compress to prefixes
+/// `["0", "100", "1010"]` because all 8 values starting with `0` are present,
+/// both values starting with `100` are present, and `1010` stands alone.
+pub fn compress_prefixes(syms: &[usize], n_bits: usize) -> Vec<Vec<Symbol>> {
+    let sym_set: HashSet<usize> = syms.iter().copied().collect();
+    let mut result = Vec::new();
+    compress_prefixes_rec(&sym_set, n_bits, 0, 0, &mut result);
+    result
+}
+
+fn compress_prefixes_rec(
+    sym_set: &HashSet<usize>,
+    n_bits: usize,
+    prefix: usize,
+    depth: usize,
+    result: &mut Vec<Vec<Symbol>>,
+) {
+    if depth == n_bits {
+        // Full-width: this is a single symbol
+        if sym_set.contains(&prefix) {
+            result.push(to_binary(prefix, n_bits));
+        }
+        return;
+    }
+
+    // Count how many values under this prefix are in the set
+    let remaining = n_bits - depth;
+    let subtree_size = 1usize << remaining;
+    let base = prefix << remaining;
+    let count = (base..base + subtree_size)
+        .filter(|v| sym_set.contains(v))
+        .count();
+
+    if count == 0 {
+        return;
+    }
+    if count == subtree_size {
+        // All values under this prefix are present — emit just the prefix
+        result.push(to_binary(prefix, depth));
+        return;
+    }
+
+    // Recurse into 0-child and 1-child
+    compress_prefixes_rec(sym_set, n_bits, prefix * 2, depth + 1, result);
+    compress_prefixes_rec(sym_set, n_bits, prefix * 2 + 1, depth + 1, result);
+}
+
 impl GuestRule {
     /// Serialize this rule into UTM tape symbols.
     pub fn serialize(&self, n_state_bits: usize, n_sym_bits: usize) -> Vec<Symbol> {
@@ -1921,9 +1972,10 @@ impl GuestRule {
             GuestRule::NoopGroup { state, syms, dir } => {
                 out.push(Symbol::Dot);
                 out.extend_from_slice(&to_binary(*state, n_state_bits));
-                for &sym_idx in syms {
+                let prefixes = compress_prefixes(syms, n_sym_bits);
+                for prefix in &prefixes {
                     out.push(Symbol::Comma);
-                    out.extend_from_slice(&to_binary(sym_idx, n_sym_bits));
+                    out.extend_from_slice(prefix);
                 }
                 out.push(Symbol::Pipe);
                 out.push(match dir {
