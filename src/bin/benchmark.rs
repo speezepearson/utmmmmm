@@ -25,6 +25,7 @@ fn main() {
 
     let start = std::time::Instant::now();
     let mut last_report = start;
+    let mut next_report = report_interval;
 
     println!(
         "Running UTM benchmark for {} steps, reporting every {}...",
@@ -55,12 +56,13 @@ fn main() {
             }
             prev_state = tm.state;
 
-            if total_steps % report_interval == 0 {
+            if total_steps == next_report {
                 let now = std::time::Instant::now();
                 let elapsed = now.duration_since(start).as_secs_f64();
                 let interval_elapsed = now.duration_since(last_report).as_secs_f64();
                 let steps_per_sec = report_interval as f64 / interval_elapsed;
                 last_report = now;
+                next_report += report_interval;
 
                 println!(
                     "{:>6.0}M outer steps | {:>8} inner steps | ratio {:>10.1} | {:.1}M steps/s | {:.1}s elapsed",
