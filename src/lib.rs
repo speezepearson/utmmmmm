@@ -11,5 +11,6 @@ pub mod tower;
 pub mod toy_machines;
 pub mod utm;
 
+mod empirical_transition_stats;
 #[cfg(test)]
 mod tests;
