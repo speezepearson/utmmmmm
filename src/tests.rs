@@ -833,9 +833,9 @@ fn make_noop_test_spec() -> crate::tm::SimpleTuringMachineSpec<u8, u8> {
     // Symbols: 0=Blank, 1=S0, 2=S1
     crate::tm::SimpleTuringMachineSpec {
         initial: 0,
-        accepting: std::collections::HashSet::from([1]),
+        accepting: std::collections::BTreeSet::from([1]),
         blank: 0,
-        transitions: std::collections::HashMap::from([
+        transitions: std::collections::BTreeMap::from([
             // Noop rules: (Scan, S0) -> (Scan, S0, R), (Scan, S1) -> (Scan, S1, R)
             ((0u8, 1u8), (0u8, 1u8, crate::tm::Dir::Right)),
             ((0u8, 2u8), (0u8, 2u8, crate::tm::Dir::Right)),

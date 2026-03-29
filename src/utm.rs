@@ -3,7 +3,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     hash::Hash,
 };
 
@@ -13,7 +13,9 @@ use crate::{
 };
 
 // ── Newtype wrappers for type safety ──
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum State {
     Accept,
     AcceptSeekHome,
@@ -397,7 +399,7 @@ const ALL_STATES: [State; 189] = [
     State::SymSkipState,
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Symbol {
     Blank,
     Zero,
@@ -541,10 +543,10 @@ fn from_binary_at(tape: &[Symbol], start: usize, width: usize) -> usize {
 }
 
 // ── RuleSet: transition table + ordered list for encoding ──
-struct RuleSet(HashMap<(State, Symbol), (State, Symbol, Dir)>);
+struct RuleSet(BTreeMap<(State, Symbol), (State, Symbol, Dir)>);
 impl RuleSet {
     fn new() -> Self {
-        Self(HashMap::new())
+        Self(BTreeMap::new())
     }
 
     fn add(&mut self, state: State, sym: Symbol, new_state: State, new_sym: Symbol, dir: Dir) {
@@ -2139,7 +2141,7 @@ impl MyUtmSpec {
 pub fn make_utm_spec() -> MyUtmSpec {
     SimpleTuringMachineSpec {
         initial: State::Init,
-        accepting: HashSet::from([State::Accept]),
+        accepting: BTreeSet::from([State::Accept]),
         blank: Symbol::Blank,
         transitions: build_utm_rules().0,
         all_states: ALL_STATES.to_vec(),

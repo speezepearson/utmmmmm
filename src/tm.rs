@@ -1,10 +1,10 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     hash::Hash,
 };
 
 // ── Direction ──
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Dir {
     Left,
     Right,
@@ -31,19 +31,19 @@ pub trait TuringMachineSpec {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimpleTuringMachineSpec<
-    State: Copy + PartialEq + Eq + Hash,
-    Symbol: Copy + PartialEq + Eq + Hash,
+    State: Copy + PartialEq + Eq + Hash + Ord,
+    Symbol: Copy + PartialEq + Eq + Hash + Ord,
 > {
     pub initial: State,
-    pub accepting: HashSet<State>,
+    pub accepting: BTreeSet<State>,
     pub blank: Symbol,
-    pub transitions: HashMap<(State, Symbol), (State, Symbol, Dir)>,
+    pub transitions: BTreeMap<(State, Symbol), (State, Symbol, Dir)>,
     pub all_states: Vec<State>,
     pub all_symbols: Vec<Symbol>,
 }
 
-impl<State: Copy + PartialEq + Eq + Hash, Symbol: Copy + PartialEq + Eq + Hash> TuringMachineSpec
-    for SimpleTuringMachineSpec<State, Symbol>
+impl<State: Copy + PartialEq + Eq + Hash + Ord, Symbol: Copy + PartialEq + Eq + Hash + Ord>
+    TuringMachineSpec for SimpleTuringMachineSpec<State, Symbol>
 {
     type State = State;
     type Symbol = Symbol;
@@ -72,15 +72,11 @@ impl<State: Copy + PartialEq + Eq + Hash, Symbol: Copy + PartialEq + Eq + Hash> 
     fn iter_rules(
         &self,
     ) -> impl Iterator<Item = (Self::State, Self::Symbol, Self::State, Self::Symbol, Dir)> {
-        let mut rules = Vec::new();
-        for &st in &self.all_states {
-            for &sym in &self.all_symbols {
-                if let Some(&(nst, nsym, dir)) = self.transitions.get(&(st, sym)) {
-                    rules.push((st, sym, nst, nsym, dir));
-                }
-            }
-        }
-        rules.into_iter()
+        self.transitions
+            .iter()
+            .map(|((state, symbol), (next_state, next_symbol, dir))| {
+                (*state, *symbol, *next_state, *next_symbol, *dir)
+            })
     }
 }
 
