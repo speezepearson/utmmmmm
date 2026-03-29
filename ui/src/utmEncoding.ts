@@ -1,7 +1,7 @@
 /**
  * UTM tape decoding logic (ported from Rust utm.rs).
  *
- * Tape layout: $ #[0] RULES > ACCEPTSTATES #[1] STATE #[2] SYMCACHE #[3] BLANK #[4] TAPE $
+ * Tape layout: $ ACC #[0] BLANK #[1] RULES #[2] STATE #[3] SYMCACHE #[4] TAPE
  */
 
 import {
@@ -52,8 +52,8 @@ export function decodeFromUtm(
     throw new Error(`Expected at least 5 # delimiters, found ${hashes.length}`);
   }
 
-  // STATE section: between hashes[1] and hashes[2]
-  const stateStart = hashes[1] + 1;
+  // STATE section: between hashes[2] and hashes[3]
+  const stateStart = hashes[2] + 1;
   const state = guestStates[fromBinary(utmTape, stateStart, nStateBits)];
 
   // TAPE section: after hashes[4]
