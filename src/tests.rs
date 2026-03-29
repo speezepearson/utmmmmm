@@ -933,6 +933,7 @@ fn test_group_rules_no_noops() {
         &rules,
         &hints.state_encodings,
         &hints.symbol_encodings,
+        &hints.transition_stats,
     );
     assert_eq!(grouped.len(), 1);
     assert!(matches!(grouped[0], GuestRule::Single { .. }));
@@ -951,6 +952,7 @@ fn test_group_rules_all_noops_same_dir() {
         &rules,
         &hints.state_encodings,
         &hints.symbol_encodings,
+        &hints.transition_stats,
     );
     assert_eq!(grouped.len(), 1);
     match &grouped[0] {
@@ -967,7 +969,7 @@ fn test_group_rules_all_noops_same_dir() {
 
 #[test]
 fn test_group_rules_mixed() {
-    // Noop rules are interleaved with non-noop; noops get consolidated at last position.
+    // Noop rules are interleaved with non-noop; noops get consolidated into one group.
     let spec = make_noop_test_spec();
     let hints = MyUtmSpecOptimizationHints::guess(&spec);
     let rules = vec![
@@ -979,14 +981,27 @@ fn test_group_rules_mixed() {
         &rules,
         &hints.state_encodings,
         &hints.symbol_encodings,
+        &hints.transition_stats,
     );
-    // Should be: [Single(non-noop), NoopGroup(S0,S1)]
-    // The non-noop stays at its position. The noop group appears at the last noop position.
     assert_eq!(grouped.len(), 2);
-    assert!(matches!(grouped[0], GuestRule::Single { .. }));
-    match &grouped[1] {
+    // With zero stats, sorted stably: NoopGroup (encountered first), then Single.
+    let noop_count = grouped
+        .iter()
+        .filter(|r| matches!(r, GuestRule::NoopGroup { .. }))
+        .count();
+    let single_count = grouped
+        .iter()
+        .filter(|r| matches!(r, GuestRule::Single { .. }))
+        .count();
+    assert_eq!(noop_count, 1);
+    assert_eq!(single_count, 1);
+    let noop = grouped
+        .iter()
+        .find(|r| matches!(r, GuestRule::NoopGroup { .. }))
+        .unwrap();
+    match noop {
         GuestRule::NoopGroup { syms, .. } => assert_eq!(syms.len(), 2),
-        _ => panic!("expected NoopGroup"),
+        _ => unreachable!(),
     }
 }
 
@@ -1003,6 +1018,7 @@ fn test_group_rules_different_dirs() {
         &rules,
         &hints.state_encodings,
         &hints.symbol_encodings,
+        &hints.transition_stats,
     );
     assert_eq!(grouped.len(), 2);
     // Each is its own NoopGroup (single-symbol groups are still NoopGroups)
@@ -1057,8 +1073,8 @@ fn test_serialize_noop_group() {
         dir: Dir::Right,
     };
     let syms = rule.serialize(2, 2);
-    // . 01 , 00 , 1 | R
-    // (syms 2 and 3 share prefix "1" and cover the full subtree)
+    // . 01 , 1 , 00 | R
+    // Prefixes sorted shortest-first: "1" (covers syms 2,3) before "00" (sym 0)
     assert_eq!(
         syms,
         vec![
@@ -1066,10 +1082,10 @@ fn test_serialize_noop_group() {
             Symbol::Zero,
             Symbol::One, // state=1
             Symbol::Comma,
+            Symbol::One, // syms 2,3 (prefix 1)
+            Symbol::Comma,
             Symbol::Zero,
             Symbol::Zero, // sym=0 (prefix 00)
-            Symbol::Comma,
-            Symbol::One, // syms 2,3 (prefix 1)
             Symbol::Pipe,
             Symbol::R,
         ]
