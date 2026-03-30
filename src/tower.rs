@@ -70,13 +70,14 @@ impl<'a> Tower<'a> {
         }
 
         // we ran into the end of self.decoded, so we need to add a new level
+        let new_tm = self
+        .encoder
+        .decode(&cur.tape)
+        .expect("it should always be okay to decode a utm that just hit a tick boundary");
         let new_level: TowerLevel<UtmTm<'a>> = TowerLevel {
-            total_steps: 0,
-            max_head_pos: 0,
-            tm: self
-                .encoder
-                .decode(&cur.tape)
-                .expect("it should always be okay to decode a utm that just entered Init"),
+            total_steps: 1,
+            max_head_pos: new_tm.pos,
+            tm: new_tm,
         };
         self.decoded.push(new_level);
 
@@ -91,7 +92,7 @@ fn decode_into_level<'a>(
 ) -> bool {
     let decoded = encoder
         .decode(&tm.tape)
-        .expect("it should always be okay to decode a utm that just entered Init");
+        .expect("it should always be okay to decode a utm that just hit a tick boundary");
     let old_state = dst.tm.state;
     let new_state = decoded.state;
     dst.total_steps += 1;
