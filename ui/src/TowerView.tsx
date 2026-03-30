@@ -64,7 +64,7 @@ function useSseTower(): {
     headPos: 0,
     state: "Init",
     steps: 0,
-    tape: [],
+    tape: ["$"],
     maxHeadPos: 0,
   });
 
@@ -100,7 +100,7 @@ function useSseTower(): {
           setTower(towerRef.current);
           setEmptyLevel((l) => ({
             ...l,
-            tape: unblemishedRef.current.slice(0, 200),
+            tape: unblemishedRef.current.slice(0, 1),
           }));
           break;
         }
@@ -184,7 +184,7 @@ function TowerLevelView({ level, name }: { level: TowerLevel; name: string }) {
         dangerouslySetInnerHTML={{
           __html:
             colorizeTape(level.tape, level.headPos) +
-            " &nbsp;&nbsp;&nbsp; and so on",
+            " &nbsp;&nbsp;&nbsp; ...and so on",
         }}
       />
     </div>
@@ -230,7 +230,7 @@ export function TowerView() {
               overflowWrap: "break-word",
             }}
           >
-            and so on
+            ...and so on
           </div>
         </div>
       </div>
