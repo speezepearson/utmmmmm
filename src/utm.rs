@@ -109,6 +109,7 @@ pub enum State {
     CpNsymRnS3,
     CpNsymSeek,
     DoneSeekHome,
+    DoneSeekHomeThroughState,
     Init,
     InitSeekEnd,
     InitSkip,
@@ -188,7 +189,7 @@ pub enum State {
     SymMatchCleanup,
     SymSkipState,
 }
-const ALL_STATES: [State; 170] = [
+const ALL_STATES: [State; 171] = [
     State::Accept,
     State::AcceptSeekHome,
     State::AccFinalHome,
@@ -281,6 +282,7 @@ const ALL_STATES: [State; 170] = [
     State::CpNsymRnS3,
     State::CpNsymSeek,
     State::DoneSeekHome,
+    State::DoneSeekHomeThroughState,
     State::Init,
     State::InitSeekEnd,
     State::InitSkip,
@@ -488,9 +490,13 @@ const ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R: [Symbol; 8] = [
 /// groups of scan-rules with prefixes.
 const X_Y_STAR_GT: [Symbol; 4] = [Symbol::X, Symbol::Y, Symbol::Star, Symbol::Gt];
 
-const ALL_SYMBOLS: [Symbol; 16] = const_concat!(
+const ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT: [Symbol; 12] = const_concat!(
     ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R,
-    X_Y_STAR_GT,
+    X_Y_STAR_GT
+);
+
+const ALL_SYMBOLS: [Symbol; 16] = const_concat!(
+    ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT,
     [Symbol::Hash, Symbol::Caret, Symbol::Dollar, Symbol::Blank,]
 );
 
@@ -625,7 +631,7 @@ fn build_utm_rules() -> RuleSet {
 
     // Symbol groups
     let rule_internals: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R, Comma];
-    let rule_all: &[Symbol] = &const_concat!(ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R, X_Y_STAR_GT);
+    let rule_all: &[Symbol] = &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT;
     let bits: &[Symbol] = &[Zero, One];
     let marked_bits: &[Symbol] = &[X, Y];
     let bits_and_marked: &[Symbol] = &[Zero, One, X, Y];
@@ -1336,7 +1342,12 @@ fn build_utm_rules() -> RuleSet {
     // ══════════════════════════════════════════════════════════════
     // PHASE 7: SEEK HOME AND RESTART
     // ══════════════════════════════════════════════════════════════
-    seek_home(&mut r, DoneSeekHome, Init);
+    {
+        scan_left(&mut r, DoneSeekHome, &const_concat!(ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT, [Caret]));
+        r.add(DoneSeekHome, Hash, DoneSeekHomeThroughState, Hash, Dir::Left);
+        scan_left(&mut r, DoneSeekHomeThroughState, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT);
+        r.add(DoneSeekHomeThroughState, Hash, MarkRule, Hash, Dir::Left);
+    }
 
     // ══════════════════════════════════════════════════════════════
     // PHASE 8: CHECK ACCEPT STATES

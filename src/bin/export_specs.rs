@@ -300,7 +300,8 @@ fn main() {
                 utm::State::MlRestore => "move left; restoring old head position as comma separator",
 
                 // Phase 7: Seek Home
-                utm::State::DoneSeekHome => "head moved; seeking $ to restart simulation cycle",
+                utm::State::DoneSeekHome => "seeking back to end of rules section to restart simulation cycle",
+                utm::State::DoneSeekHomeThroughState => "seeking back to end of rules section to restart simulation cycle (through state",
 
                 // Phase 8: Check Accept States
                 utm::State::ChkAccInit => "no rule matched; beginning to check if current state is accepting",
