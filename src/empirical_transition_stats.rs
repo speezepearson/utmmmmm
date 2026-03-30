@@ -2,12 +2,12 @@
 // This file contains empirically-derived transition statistics
 // for optimizing UTM rule ordering.
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::utm::{State, Symbol};
 
-pub fn make_empirical_transition_stats() -> HashMap<(State, Symbol), usize> {
-    HashMap::from([
+pub fn make_empirical_transition_stats() -> BTreeMap<(State, Symbol), usize> {
+    BTreeMap::from([
         ((State::Init, Symbol::Dollar), 1),
         ((State::CmpSymC1Fb, Symbol::Zero), 1),
         ((State::RdSk2, Symbol::Pipe), 2),

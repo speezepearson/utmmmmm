@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use crate::gen_utm::UtmSpec;
 use crate::tm::{Dir, RunningTuringMachine, TuringMachineSpec};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct CState(pub u8);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct CSymbol(pub u8);
 
 #[derive(Debug, Clone, PartialEq, Eq)]

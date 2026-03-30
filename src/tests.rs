@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::gen_utm::{Encoder, UtmSpec};
 use crate::tm::{
@@ -370,7 +370,7 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
     let utm_spec = make_utm_spec();
     let encoder = MyUtmSpecOptimizationHints::from_transition_stats(
         spec,
-        &HashMap::from([((FlipBitsState::Flip, Zero), 1)]),
+        &BTreeMap::from([((FlipBitsState::Flip, Zero), 1)]),
     );
     let encoded = encoder.encode(&tm);
 
@@ -446,7 +446,7 @@ fn bench_compiled_vs_interpreted() {
 
     // Helper: convert Symbol tape to CSymbol tape
     let compiled = CompiledTuringMachineSpec::compile(&utm_spec).expect("UTM should compile");
-    let sym_to_csym: std::collections::HashMap<Symbol, CSymbol> = compiled
+    let sym_to_csym: std::collections::BTreeMap<Symbol, CSymbol> = compiled
         .original_symbols
         .iter()
         .enumerate()
@@ -507,7 +507,7 @@ fn bench_compiled_vs_interpreted() {
         "═══ Benchmark: UTM(UTM(accept_immediately)), {} steps ═══",
         STEPS
     );
-    eprintln!("  Interpreted (HashMap): {:?}", interp_elapsed);
+    eprintln!("  Interpreted (BTreeMap): {:?}", interp_elapsed);
     eprintln!("  Compiled (array):      {:?}", compiled_elapsed);
     eprintln!("  Speedup:               {:.2}x", speedup);
 }
@@ -614,7 +614,7 @@ fn bench_rule_order_optimization() {
         // We can't reuse InfiniteTapeExtender directly since it uses OPTIMIZATION_HINTS,
         // so for the unoptimized case we need to build the tape from the unoptimized header.
         // For simplicity, pre-extend a large tape and run from that.
-        let sym_to_idx: std::collections::HashMap<Symbol, usize> = utm_spec
+        let sym_to_idx: std::collections::BTreeMap<Symbol, usize> = utm_spec
             .iter_symbols()
             .enumerate()
             .map(|(i, s)| (s, i))
@@ -640,7 +640,7 @@ fn bench_rule_order_optimization() {
         }
 
         // Convert to compiled symbols
-        let sym_to_csym: std::collections::HashMap<Symbol, crate::compiled::CSymbol> = compiled
+        let sym_to_csym: std::collections::BTreeMap<Symbol, crate::compiled::CSymbol> = compiled
             .original_symbols
             .iter()
             .enumerate()
@@ -1022,9 +1022,9 @@ fn test_group_rules_different_dirs() {
 #[test]
 fn test_serialize_single_rule() {
     // 2 states (1 bit), 4 symbols (2 bits)
-    let state_encodings: HashMap<u8, Bitstring> =
-        HashMap::from([(0, vec![false]), (1, vec![true])]);
-    let symbol_encodings: HashMap<u8, Bitstring> = HashMap::from([
+    let state_encodings: BTreeMap<u8, Bitstring> =
+        BTreeMap::from([(0, vec![false]), (1, vec![true])]);
+    let symbol_encodings: BTreeMap<u8, Bitstring> = BTreeMap::from([
         (0, vec![false, false]),
         (1, vec![false, true]),
         (2, vec![true, false]),
@@ -1061,13 +1061,13 @@ fn test_serialize_single_rule() {
 #[test]
 fn test_serialize_noop_group() {
     // 4 states (2 bits), 4 symbols (2 bits)
-    let state_encodings: HashMap<u8, Bitstring> = HashMap::from([
+    let state_encodings: BTreeMap<u8, Bitstring> = BTreeMap::from([
         (0, vec![false, false]),
         (1, vec![false, true]),
         (2, vec![true, false]),
         (3, vec![true, true]),
     ]);
-    let symbol_encodings: HashMap<u8, Bitstring> = HashMap::from([
+    let symbol_encodings: BTreeMap<u8, Bitstring> = BTreeMap::from([
         (0, vec![false, false]),
         (1, vec![false, true]),
         (2, vec![true, false]),
@@ -1100,9 +1100,9 @@ fn test_serialize_noop_group() {
 
 #[test]
 fn test_serialize_rules_semicolons() {
-    let state_encodings: HashMap<u8, Bitstring> =
-        HashMap::from([(0, vec![false]), (1, vec![true])]);
-    let symbol_encodings: HashMap<u8, Bitstring> = HashMap::from([
+    let state_encodings: BTreeMap<u8, Bitstring> =
+        BTreeMap::from([(0, vec![false]), (1, vec![true])]);
+    let symbol_encodings: BTreeMap<u8, Bitstring> = BTreeMap::from([
         (0, vec![false, false]),
         (1, vec![false, true]),
         (2, vec![true, false]),

@@ -11,8 +11,8 @@ pub enum Dir {
 }
 
 pub trait TuringMachineSpec {
-    type State: Copy + PartialEq + Eq + Hash;
-    type Symbol: Copy + PartialEq + Eq + Hash;
+    type State: Copy + PartialEq + Eq + Hash + Ord;
+    type Symbol: Copy + PartialEq + Eq + Hash + Ord;
     fn initial(&self) -> Self::State;
     fn blank(&self) -> Self::Symbol;
     fn is_accepting(&self, state: Self::State) -> bool;

@@ -11,7 +11,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
 use crate::{
     compiled::{CSymbol, CompiledTuringMachineSpec},
@@ -22,7 +22,7 @@ use crate::{
 
 pub struct InfiniteTape {
     header: Vec<Symbol>,
-    symbol_encodings: HashMap<Symbol, Bitstring>,
+    symbol_encodings: BTreeMap<Symbol, Bitstring>,
     cell_width: usize, // 1 (marker) + n_sym_bits
     realized: RefCell<Vec<Symbol>>,
 }
@@ -37,7 +37,7 @@ impl InfiniteTape {
             .expect("encoded tape should contain ^");
         let header = dummy[..caret_pos].to_vec();
 
-        let symbol_encodings: HashMap<Symbol, Bitstring> = encoder.symbol_encodings.clone();
+        let symbol_encodings: BTreeMap<Symbol, Bitstring> = encoder.symbol_encodings.clone();
         let n_sym_bits = symbol_encodings
             .values()
             .map(|s| s.len())
@@ -131,7 +131,7 @@ impl InfiniteTape {
 #[cfg(test)]
 mod tests {
 
-    use crate::{utm::make_utm_spec};
+    use crate::utm::make_utm_spec;
 
     use super::*;
 

@@ -3,7 +3,7 @@
 // ════════════════════════════════════════════════════════════════════
 
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     hash::Hash,
 };
 
@@ -1607,9 +1607,9 @@ pub fn run_until_inner_step<Spec: UtmSpec>(
 pub struct MyUtmSpecOptimizationHints<'a, Guest: 'a + TuringMachineSpec> {
     pub guest: &'a Guest,
     pub rules: Vec<GuestRule<Guest::State, Guest::Symbol>>,
-    pub state_encodings: HashMap<Guest::State, Bitstring>,
-    pub symbol_encodings: HashMap<Guest::Symbol, Bitstring>,
-    pub transition_stats: HashMap<(Guest::State, Guest::Symbol), usize>,
+    pub state_encodings: BTreeMap<Guest::State, Bitstring>,
+    pub symbol_encodings: BTreeMap<Guest::Symbol, Bitstring>,
+    pub transition_stats: BTreeMap<(Guest::State, Guest::Symbol), usize>,
 }
 
 impl<'a, Guest: 'a + TuringMachineSpec> Encoder<'a, Symbol, Guest>
@@ -1751,11 +1751,11 @@ impl<'a, Guest: 'a + TuringMachineSpec> Encoder<'a, Symbol, Guest>
 
 impl<'a, Guest: 'a + TuringMachineSpec> MyUtmSpecOptimizationHints<'a, Guest> {
     pub fn guess(guest: &'a Guest) -> Self {
-        Self::from_transition_stats(&guest, &HashMap::new())
+        Self::from_transition_stats(&guest, &BTreeMap::new())
     }
     pub fn from_transition_stats(
         guest: &'a Guest,
-        transition_stats: &HashMap<(Guest::State, Guest::Symbol), usize>,
+        transition_stats: &BTreeMap<(Guest::State, Guest::Symbol), usize>,
     ) -> Self {
         let rules = group_rules(&guest.iter_rules().collect::<Vec<_>>(), transition_stats);
 
@@ -1809,14 +1809,15 @@ pub enum GuestRule<GState, GSymbol> {
 /// with `n_bits=4`, indices `{0,1,2,3,4,5,6,7,8,9,10}` compress to prefixes
 /// `["0", "100", "1010"]` because all 8 values starting with `0` are present,
 /// both values starting with `100` are present, and `1010` stands alone.
-pub fn compress_prefixes<GSymbol>(
+pub fn compress_prefixes<GSymbol: Ord>(
     syms: &[GSymbol],
-    symbol_encodings: &HashMap<GSymbol, Bitstring>,
+    symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
 ) -> Vec<Bitstring>
 where
-    GSymbol: Eq + Hash + Copy,
+    GSymbol: Eq + Ord + Copy,
 {
-    let target_encodings: HashSet<&Bitstring> = syms.iter().map(|s| &symbol_encodings[s]).collect();
+    let target_encodings: BTreeSet<&Bitstring> =
+        syms.iter().map(|s| &symbol_encodings[s]).collect();
     let non_target_encodings: Vec<&Bitstring> = symbol_encodings
         .iter()
         .filter(|(k, _)| !syms.contains(k))
@@ -1830,7 +1831,7 @@ where
 }
 
 fn compress_prefixes_rec(
-    targets: &HashSet<&Bitstring>,
+    targets: &BTreeSet<&Bitstring>,
     non_targets: &[&Bitstring],
     prefix: &[bool],
     result: &mut Vec<Bitstring>,
@@ -1857,12 +1858,12 @@ fn compress_prefixes_rec(
     }
 }
 
-impl<GState: Eq + Hash + Copy, GSymbol: Eq + Hash + Copy> GuestRule<GState, GSymbol> {
+impl<GState: Eq + Ord + Copy, GSymbol: Eq + Ord + Copy> GuestRule<GState, GSymbol> {
     /// Serialize this rule into UTM tape symbols.
     pub fn serialize(
         &self,
-        state_encodings: &HashMap<GState, Bitstring>,
-        symbol_encodings: &HashMap<GSymbol, Bitstring>,
+        state_encodings: &BTreeMap<GState, Bitstring>,
+        symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
     ) -> Vec<Symbol> {
         let mut out = Vec::new();
         match self {
@@ -1907,10 +1908,10 @@ impl<GState: Eq + Hash + Copy, GSymbol: Eq + Hash + Copy> GuestRule<GState, GSym
 }
 
 /// Serialize a list of GuestRules into the RULES section content (without surrounding #).
-pub fn serialize_rules<GState: Eq + Copy + Hash, GSymbol: Eq + Copy + Hash>(
+pub fn serialize_rules<GState: Eq + Copy + Ord, GSymbol: Eq + Copy + Ord>(
     rules: &[GuestRule<GState, GSymbol>],
-    state_encodings: &HashMap<GState, Bitstring>,
-    symbol_encodings: &HashMap<GSymbol, Bitstring>,
+    state_encodings: &BTreeMap<GState, Bitstring>,
+    symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
 ) -> Vec<Symbol> {
     let mut tape = Vec::new();
     for (i, rule) in rules.iter().enumerate() {
@@ -1930,17 +1931,17 @@ pub fn serialize_rules<GState: Eq + Copy + Hash, GSymbol: Eq + Copy + Hash>(
 /// so the UTM (which scans rules right-to-left) finds frequent rules first.
 pub fn group_rules<GState, GSymbol>(
     rules: &[(GState, GSymbol, GState, GSymbol, Dir)],
-    transition_stats: &HashMap<(GState, GSymbol), usize>,
+    transition_stats: &BTreeMap<(GState, GSymbol), usize>,
 ) -> Vec<GuestRule<GState, GSymbol>>
 where
-    GState: Eq + Hash + Copy,
-    GSymbol: Eq + Hash + Copy,
+    GState: Eq + Ord + Copy,
+    GSymbol: Eq + Ord + Copy,
 {
     // Identify noop rules and group by (state_encoding, dir)
-    let mut noop_groups: HashMap<(GState, Dir), Vec<GSymbol>> = HashMap::new();
-    let mut noop_set: HashSet<(GState, GSymbol)> = HashSet::new();
+    let mut noop_groups: BTreeMap<(GState, Dir), Vec<GSymbol>> = BTreeMap::new();
+    let mut noop_set: BTreeSet<(GState, GSymbol)> = BTreeSet::new();
     // Track Guest-typed keys per noop group for stat lookups
-    let mut noop_group_keys: HashMap<(GState, Dir), Vec<(GState, GSymbol)>> = HashMap::new();
+    let mut noop_group_keys: BTreeMap<(GState, Dir), Vec<(GState, GSymbol)>> = BTreeMap::new();
 
     for &(st, sym, nst, nsym, dir) in rules {
         if nst == st && nsym == sym {
@@ -1954,7 +1955,7 @@ where
     }
 
     // Build result: one entry per noop group, one per non-noop rule
-    let mut emitted_noop_groups: HashSet<(GState, Dir)> = HashSet::new();
+    let mut emitted_noop_groups: BTreeSet<(GState, Dir)> = BTreeSet::new();
     let mut result: Vec<(GuestRule<GState, GSymbol>, usize)> = Vec::new();
 
     for &(st, sym, nst, nsym, dir) in rules {
