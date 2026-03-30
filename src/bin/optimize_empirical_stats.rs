@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use utmmmmm::compiled::CompiledTuringMachineSpec;
+use utmmmmm::compiled::{CState, CSymbol, CompiledTuringMachineSpec};
 use utmmmmm::infinity::InfiniteTape;
 use utmmmmm::tm::{Dir, RunningTuringMachine, TuringMachineSpec};
 use utmmmmm::utm::{
@@ -17,11 +17,11 @@ fn run_and_tally(
     let mut tm = RunningTuringMachine::new(&compiled);
     let background = InfiniteTape::new(utm_spec, hints);
 
-    let mut tallies: HashMap<(State, Symbol), usize> = HashMap::new();
+    let mut tallies: [usize; 256 * 256] = [0; 256 * 256];
     let mut inner_steps: u64 = 0;
     let mut prev_state = tm.state;
 
-    for _ in 0..max_steps {
+    for i in 0..max_steps {
         if tm.pos >= tm.tape.len() {
             background.extend_compiled(&mut tm.tape, tm.pos + 1, &compiled);
         }
@@ -29,9 +29,7 @@ fn run_and_tally(
         let sym = tm.tape[tm.pos];
         if let Some((ns, nsym, dir)) = compiled.get_transition(tm.state, sym) {
             // Tally the transition using original (decompiled) state/symbol
-            let orig_state = compiled.decompile_state(tm.state);
-            let orig_sym = compiled.decompile_symbol(sym);
-            *tallies.entry((orig_state, orig_sym)).or_insert(0) += 1;
+            tallies[(tm.state.0 as usize) * 256 + sym.0 as usize] += 1;
 
             tm.state = ns;
             tm.tape[tm.pos] = nsym;
@@ -45,12 +43,33 @@ fn run_and_tally(
                 inner_steps += 1;
             }
             prev_state = tm.state;
+
+            if i % 1_000_000_000 == 0 {
+                eprintln!("{} steps", i);
+            }
         } else {
             break;
         }
     }
 
-    (inner_steps, TmTransitionStats(tallies))
+    (
+        inner_steps,
+        TmTransitionStats(HashMap::from_iter(
+            tallies
+                .iter()
+                .enumerate()
+                .filter(|(_, &c)| c > 0)
+                .map(|(i, &count)| {
+                    (
+                        (
+                            compiled.decompile_state(CState((i / 256) as u8)),
+                            compiled.decompile_symbol(CSymbol((i % 256) as u8)),
+                        ),
+                        count,
+                    )
+                }),
+        )),
+    )
 }
 
 fn codegen(stats: &TmTransitionStats<MyUtmSpec>) -> String {
