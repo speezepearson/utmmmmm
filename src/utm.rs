@@ -473,19 +473,23 @@ pub fn num_bits(count: usize) -> usize {
     1.max((count.max(2) as f64).log2().ceil() as usize)
 }
 
-pub fn to_binary(index: usize, width: usize) -> Vec<Symbol> {
+pub type Bitstring = Vec<bool>;
+
+pub fn to_binary(index: usize, width: usize) -> Bitstring {
     if index >= 1 << width {
         panic!("index {} is too large for width {}", index, width);
     }
     let mut bits = Vec::with_capacity(width);
     for i in (0..width).rev() {
-        bits.push(if (index >> i) & 1 == 1 {
-            Symbol::One
-        } else {
-            Symbol::Zero
-        });
+        bits.push((index >> i) & 1 == 1);
     }
     bits
+}
+
+fn bitstring_to_symbols(bits: &[bool]) -> Vec<Symbol> {
+    bits.iter()
+        .map(|&b| if b { Symbol::One } else { Symbol::Zero })
+        .collect()
 }
 
 fn from_binary_at(tape: &[Symbol], start: usize, width: usize) -> usize {
@@ -1670,8 +1674,8 @@ pub fn run_until_inner_step<Spec: UtmSpec>(
 
 pub struct MyUtmSpecOptimizationHints<Guest: TuringMachineSpec> {
     pub rules: Vec<GuestRule<Guest::State, Guest::Symbol>>,
-    pub state_encodings: HashMap<Guest::State, Vec<Symbol>>,
-    pub symbol_encodings: HashMap<Guest::Symbol, Vec<Symbol>>,
+    pub state_encodings: HashMap<Guest::State, Bitstring>,
+    pub symbol_encodings: HashMap<Guest::Symbol, Bitstring>,
     pub transition_stats: HashMap<(Guest::State, Guest::Symbol), usize>,
 }
 impl<Guest: TuringMachineSpec> MyUtmSpecOptimizationHints<Guest> {
@@ -1735,20 +1739,61 @@ pub enum GuestRule<GState, GSymbol> {
 /// both values starting with `100` are present, and `1010` stands alone.
 pub fn compress_prefixes<GSymbol>(
     syms: &[GSymbol],
-    symbol_encodings: &HashMap<GSymbol, Vec<Symbol>>,
-) -> Vec<Vec<Symbol>>
+    symbol_encodings: &HashMap<GSymbol, Bitstring>,
+) -> Vec<Bitstring>
 where
     GSymbol: Eq + Hash + Copy,
 {
-    todo!();
+    let target_encodings: HashSet<&Bitstring> = syms.iter().map(|s| &symbol_encodings[s]).collect();
+    let non_target_encodings: Vec<&Bitstring> = symbol_encodings
+        .iter()
+        .filter(|(k, _)| !syms.contains(k))
+        .map(|(_, v)| v)
+        .collect();
+
+    let mut result = Vec::new();
+    compress_prefixes_rec(&target_encodings, &non_target_encodings, &[], &mut result);
+    result.sort_by_key(|p| p.len());
+    result
+}
+
+fn compress_prefixes_rec(
+    targets: &HashSet<&Bitstring>,
+    non_targets: &[&Bitstring],
+    prefix: &[bool],
+    result: &mut Vec<Bitstring>,
+) {
+    // Count how many target encodings start with this prefix
+    let target_count = targets
+        .iter()
+        .filter(|enc| enc.starts_with(prefix))
+        .count();
+    if target_count == 0 {
+        return;
+    }
+
+    // Check if any non-target encoding starts with this prefix
+    let has_non_target = non_targets.iter().any(|enc| enc.starts_with(prefix));
+    if !has_non_target {
+        // This prefix covers only target encodings — emit it
+        result.push(prefix.to_vec());
+        return;
+    }
+
+    // Recurse into 0 and 1 children
+    for bit in [false, true] {
+        let mut child_prefix = prefix.to_vec();
+        child_prefix.push(bit);
+        compress_prefixes_rec(targets, non_targets, &child_prefix, result);
+    }
 }
 
 impl<GState: Eq + Hash + Copy, GSymbol: Eq + Hash + Copy> GuestRule<GState, GSymbol> {
     /// Serialize this rule into UTM tape symbols.
     pub fn serialize(
         &self,
-        state_encodings: &HashMap<GState, Vec<Symbol>>,
-        symbol_encodings: &HashMap<GSymbol, Vec<Symbol>>,
+        state_encodings: &HashMap<GState, Bitstring>,
+        symbol_encodings: &HashMap<GSymbol, Bitstring>,
     ) -> Vec<Symbol> {
         let mut out = Vec::new();
         match self {
@@ -1760,13 +1805,13 @@ impl<GState: Eq + Hash + Copy, GSymbol: Eq + Hash + Copy> GuestRule<GState, GSym
                 dir,
             } => {
                 out.push(Symbol::Dot);
-                out.extend_from_slice(&state_encodings[state]);
+                out.extend(bitstring_to_symbols(&state_encodings[state]));
                 out.push(Symbol::Pipe);
-                out.extend_from_slice(&symbol_encodings[sym]);
+                out.extend(bitstring_to_symbols(&symbol_encodings[sym]));
                 out.push(Symbol::Pipe);
-                out.extend_from_slice(&state_encodings[new_state]);
+                out.extend(bitstring_to_symbols(&state_encodings[new_state]));
                 out.push(Symbol::Pipe);
-                out.extend_from_slice(&symbol_encodings[new_sym]);
+                out.extend(bitstring_to_symbols(&symbol_encodings[new_sym]));
                 out.push(Symbol::Pipe);
                 out.push(match dir {
                     Dir::Left => Symbol::L,
@@ -1775,11 +1820,11 @@ impl<GState: Eq + Hash + Copy, GSymbol: Eq + Hash + Copy> GuestRule<GState, GSym
             }
             GuestRule::NoopGroup { state, syms, dir } => {
                 out.push(Symbol::Dot);
-                out.extend_from_slice(&state_encodings[state]);
+                out.extend(bitstring_to_symbols(&state_encodings[state]));
                 let prefixes = compress_prefixes(syms, symbol_encodings);
                 for prefix in &prefixes {
                     out.push(Symbol::Comma);
-                    out.extend_from_slice(prefix);
+                    out.extend(bitstring_to_symbols(prefix));
                 }
                 out.push(Symbol::Pipe);
                 out.push(match dir {
@@ -1795,8 +1840,8 @@ impl<GState: Eq + Hash + Copy, GSymbol: Eq + Hash + Copy> GuestRule<GState, GSym
 /// Serialize a list of GuestRules into the RULES section content (without surrounding #).
 pub fn serialize_rules<GState: Eq + Copy + Hash, GSymbol: Eq + Copy + Hash>(
     rules: &[GuestRule<GState, GSymbol>],
-    state_encodings: &HashMap<GState, Vec<Symbol>>,
-    symbol_encodings: &HashMap<GSymbol, Vec<Symbol>>,
+    state_encodings: &HashMap<GState, Bitstring>,
+    symbol_encodings: &HashMap<GSymbol, Bitstring>,
 ) -> Vec<Symbol> {
     let mut tape = Vec::new();
     for (i, rule) in rules.iter().enumerate() {
@@ -1917,12 +1962,12 @@ impl MyUtmSpec {
             if i > 0 {
                 tape.push(Symbol::Semi);
             }
-            tape.extend_from_slice(&hints.state_encodings[&state]);
+            tape.extend(bitstring_to_symbols(&hints.state_encodings[&state]));
         }
 
         // BLANK section
         tape.push(Symbol::Hash);
-        tape.extend_from_slice(&hints.symbol_encodings[&guest.spec.blank()]);
+        tape.extend(bitstring_to_symbols(&hints.symbol_encodings[&guest.spec.blank()]));
 
         // RULES section: # .rule1 ; .rule2 ; .rule3 ...
         tape.push(Symbol::Hash);
@@ -1935,7 +1980,7 @@ impl MyUtmSpec {
 
         // STATE section
         tape.push(Symbol::Hash);
-        tape.extend_from_slice(&hints.state_encodings[&guest.state]);
+        tape.extend(bitstring_to_symbols(&hints.state_encodings[&guest.state]));
 
         // TAPE section
         tape.push(Symbol::Hash);
@@ -1950,7 +1995,7 @@ impl MyUtmSpec {
         };
         for sym in nonempty_guest_tape {
             tape.push(Symbol::Comma);
-            tape.extend_from_slice(&hints.symbol_encodings[&sym]);
+            tape.extend(bitstring_to_symbols(&hints.symbol_encodings[&sym]));
         }
         tape[caret_pos] = Symbol::Caret;
 

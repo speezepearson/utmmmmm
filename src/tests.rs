@@ -367,8 +367,10 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
     let utm_spec = make_utm_spec();
     let encoded = utm_spec.encode_optimized(
         &tm,
-        &TmTransitionStats(HashMap::from([((FlipBitsState::Flip, Zero), 1)]))
-            .make_optimization_hints(&spec),
+        &MyUtmSpecOptimizationHints::from_transition_stats(
+            &spec,
+            &HashMap::from([((FlipBitsState::Flip, Zero), 1)]),
+        ),
     );
 
     // Run directly
@@ -929,10 +931,8 @@ fn test_group_rules_no_noops() {
     let hints = MyUtmSpecOptimizationHints::guess(&spec);
     // Filter to just the non-noop rule: (Scan=0, Blank=0) -> (Done=1, Blank=0, L)
     let rules = vec![(0u8, 0u8, 1u8, 0u8, Dir::Left)];
-    let grouped = group_rules::<crate::tm::SimpleTuringMachineSpec<u8, u8>>(
+    let grouped = group_rules(
         &rules,
-        &hints.state_encodings,
-        &hints.symbol_encodings,
         &hints.transition_stats,
     );
     assert_eq!(grouped.len(), 1);
@@ -948,19 +948,17 @@ fn test_group_rules_all_noops_same_dir() {
         (0u8, 1u8, 0u8, 1u8, Dir::Right), // noop: Scan, S0
         (0u8, 2u8, 0u8, 2u8, Dir::Right), // noop: Scan, S1
     ];
-    let grouped = group_rules::<crate::tm::SimpleTuringMachineSpec<u8, u8>>(
+    let grouped = group_rules(
         &rules,
-        &hints.state_encodings,
-        &hints.symbol_encodings,
         &hints.transition_stats,
     );
     assert_eq!(grouped.len(), 1);
     match &grouped[0] {
         GuestRule::NoopGroup { state, syms, dir } => {
-            assert_eq!(*state, hints.state_encodings[&0u8]);
+            assert_eq!(*state, 0u8);
             assert_eq!(syms.len(), 2);
-            assert_eq!(syms[0], hints.symbol_encodings[&1u8]);
-            assert_eq!(syms[1], hints.symbol_encodings[&2u8]);
+            assert_eq!(syms[0], 1u8);
+            assert_eq!(syms[1], 2u8);
             assert_eq!(*dir, Dir::Right);
         }
         _ => panic!("expected NoopGroup"),
@@ -977,10 +975,8 @@ fn test_group_rules_mixed() {
         (0u8, 0u8, 1u8, 0u8, Dir::Left),  // non-noop
         (0u8, 2u8, 0u8, 2u8, Dir::Right), // noop (same group as first)
     ];
-    let grouped = group_rules::<crate::tm::SimpleTuringMachineSpec<u8, u8>>(
+    let grouped = group_rules(
         &rules,
-        &hints.state_encodings,
-        &hints.symbol_encodings,
         &hints.transition_stats,
     );
     assert_eq!(grouped.len(), 2);
@@ -1014,10 +1010,8 @@ fn test_group_rules_different_dirs() {
         (0u8, 1u8, 0u8, 1u8, Dir::Right), // noop R
         (0u8, 2u8, 0u8, 2u8, Dir::Left),  // noop L (different dir)
     ];
-    let grouped = group_rules::<crate::tm::SimpleTuringMachineSpec<u8, u8>>(
+    let grouped = group_rules(
         &rules,
-        &hints.state_encodings,
-        &hints.symbol_encodings,
         &hints.transition_stats,
     );
     assert_eq!(grouped.len(), 2);
@@ -1037,14 +1031,25 @@ fn test_group_rules_different_dirs() {
 
 #[test]
 fn test_serialize_single_rule() {
-    let rule = GuestRule::Single {
+    // 2 states (1 bit), 4 symbols (2 bits)
+    let state_encodings: HashMap<u8, Bitstring> = HashMap::from([
+        (0, vec![false]),
+        (1, vec![true]),
+    ]);
+    let symbol_encodings: HashMap<u8, Bitstring> = HashMap::from([
+        (0, vec![false, false]),
+        (1, vec![false, true]),
+        (2, vec![true, false]),
+        (3, vec![true, true]),
+    ]);
+    let rule: GuestRule<u8, u8> = GuestRule::Single {
         state: 0,
         sym: 1,
         new_state: 1,
         new_sym: 0,
         dir: Dir::Left,
     };
-    let syms = rule.serialize(1, 2);
+    let syms = rule.serialize(&state_encodings, &symbol_encodings);
     // . 0 | 01 | 1 | 00 | L
     assert_eq!(
         syms,
@@ -1067,12 +1072,25 @@ fn test_serialize_single_rule() {
 
 #[test]
 fn test_serialize_noop_group() {
-    let rule = GuestRule::NoopGroup {
+    // 4 states (2 bits), 4 symbols (2 bits)
+    let state_encodings: HashMap<u8, Bitstring> = HashMap::from([
+        (0, vec![false, false]),
+        (1, vec![false, true]),
+        (2, vec![true, false]),
+        (3, vec![true, true]),
+    ]);
+    let symbol_encodings: HashMap<u8, Bitstring> = HashMap::from([
+        (0, vec![false, false]),
+        (1, vec![false, true]),
+        (2, vec![true, false]),
+        (3, vec![true, true]),
+    ]);
+    let rule: GuestRule<u8, u8> = GuestRule::NoopGroup {
         state: 1,
         syms: vec![0, 2, 3],
         dir: Dir::Right,
     };
-    let syms = rule.serialize(2, 2);
+    let syms = rule.serialize(&state_encodings, &symbol_encodings);
     // . 01 , 1 , 00 | R
     // Prefixes sorted shortest-first: "1" (covers syms 2,3) before "00" (sym 0)
     assert_eq!(
@@ -1094,7 +1112,16 @@ fn test_serialize_noop_group() {
 
 #[test]
 fn test_serialize_rules_semicolons() {
-    let rules = vec![
+    let state_encodings: HashMap<u8, Bitstring> = HashMap::from([
+        (0, vec![false]),
+        (1, vec![true]),
+    ]);
+    let symbol_encodings: HashMap<u8, Bitstring> = HashMap::from([
+        (0, vec![false, false]),
+        (1, vec![false, true]),
+        (2, vec![true, false]),
+    ]);
+    let rules: Vec<GuestRule<u8, u8>> = vec![
         GuestRule::Single {
             state: 0,
             sym: 0,
@@ -1108,7 +1135,7 @@ fn test_serialize_rules_semicolons() {
             dir: Dir::Right,
         },
     ];
-    let tape = serialize_rules(&rules, 1, 2);
+    let tape = serialize_rules(&rules, &state_encodings, &symbol_encodings);
     // Rules should be separated by ;
     let semi_count = tape.iter().filter(|&&s| s == Symbol::Semi).count();
     assert_eq!(

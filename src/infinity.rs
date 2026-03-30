@@ -16,12 +16,12 @@ use std::collections::HashMap;
 use crate::{
     compiled::{CSymbol, CompiledTuringMachineSpec},
     tm::{RunningTuringMachine, SimpleTuringMachineSpec},
-    utm::{ MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol},
+    utm::{Bitstring, MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol},
 };
 
 pub struct InfiniteTape {
     header: Vec<Symbol>,
-    symbol_encodings: HashMap<Symbol, Vec<Symbol>>,
+    symbol_encodings: HashMap<Symbol, Bitstring>,
     cell_width: usize, // 1 (marker) + n_sym_bits
     realized: RefCell<Vec<Symbol>>,
 }
@@ -39,7 +39,7 @@ impl InfiniteTape {
             .expect("encoded tape should contain ^");
         let header = dummy[..caret_pos].to_vec();
 
-        let symbol_encodings: HashMap<Symbol, Vec<Symbol>> =
+        let symbol_encodings: HashMap<Symbol, Bitstring> =
             optimization_hints.symbol_encodings.clone();
         let n_sym_bits = symbol_encodings
             .values()
@@ -123,12 +123,8 @@ impl InfiniteTape {
                     let bit_offset = offset % cell_width - 1;
 
                     let sym = cache[cell_index]; // always available: cell_index < pos
-                    let bit = match symbol_encodings[&sym][bit_offset] {
-                        Symbol::One => 1,
-                        Symbol::Zero => 0,
-                        _ => panic!("symbol encoding should only contain One and Zero"),
-                    };
-                    cache.push(if bit == 1 { Symbol::One } else { Symbol::Zero });
+                    let bit = symbol_encodings[&sym][bit_offset];
+                    cache.push(if bit { Symbol::One } else { Symbol::Zero });
                 }
             }
         }
