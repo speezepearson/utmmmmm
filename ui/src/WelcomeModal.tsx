@@ -88,8 +88,8 @@ export function WelcomeModal() {
     (_oldState: State, cur: TuringMachineSnapshot) => {
       const l1 = decodeFromUtm(utmSpec.spec, cur);
       if (l1) setDecodedFromL2((l) => ({ ...l, l1 }));
-      const l2 = l1 && decodeFromUtm(flipBitsSpec.spec, l1);
-      if (l2) setDecodedFromL2((l) => ({ ...l, l2 }));
+      const l0 = l1 && decodeFromUtm(flipBitsSpec.spec, l1);
+      if (l0) setDecodedFromL2((l) => ({ ...l, l0 }));
     },
     [],
   );
@@ -157,16 +157,17 @@ export function WelcomeModal() {
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h2 style={{ marginTop: 0, textAlign: "center" }}>
-          Welcome to the Self-Simulating Tower!
-        </h2>
+        <h1 style={{ margin: "0 0 1em", textAlign: "center" }}>
+          A brief explanation
+        </h1>
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           Here's a simple Turing machine (you know what a{" "}
           <a href="https://en.wikipedia.org/wiki/Turing_machine">
             Turing machine
           </a>{" "}
-          is, right?), which takes a tape of 0/1s and flips them all:
+          is, right?), which takes a tape of 0/1s, flips them all, and then
+          halts:
         </p>
 
         <div style={{ margin: "0 10%" }}>
@@ -175,7 +176,9 @@ export function WelcomeModal() {
             initialFps={5}
             stateDescriptions={flipBitsSpec.stateDescriptions}
           />
-          (The head pos is colored red.)
+          <p className="aside">
+            (The red cell is where the machine's head is.)
+          </p>
         </div>
 
         <hr style={{ margin: "3em 0" }} />
@@ -183,8 +186,8 @@ export function WelcomeModal() {
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           You may recall that a Turing machine is "universal" if it's capable of
           simulating arbitrary other Turing machines. (Precisely: if there
-          exists some encoding scheme mapping (other TM, tape for other TM) to
-          (tape for the UTM) such that the UTM "accepts" if-and-only-if the
+          exists some encoding scheme mapping (other TM, tape for other
+          TM)→(tape for the UTM) such that the UTM "accepts" if-and-only-if the
           simulated TM would accept.)
         </p>
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
@@ -199,27 +202,12 @@ export function WelcomeModal() {
             initialFps={30}
             stateDescriptions={utmSpec.stateDescriptions}
           />
-          (The green squares have no mechanical significance; they just call out
-          points of interest.)
-          {decodedFromL1 && (
-            <>
-              <p
-                style={{
-                  textAlign: "left",
-                  marginBottom: "8px",
-                  marginTop: "16px",
-                  lineHeight: "1.6",
-                }}
-              >
-                Decoded from the UTM's tape:
-              </p>
-              <TapeView
-                tm={decodedFromL1}
-                stateDescriptions={flipBitsSpec.stateDescriptions}
-              />
-            </>
-          )}
-          <details>
+          <p className="aside">
+            (The green squares have no mechanical significance; they just call
+            out points of interest.)
+          </p>
+
+          <details className="aside">
             <summary>Nitty-gritty details for the curious</summary>
 
             <ul>
@@ -302,6 +290,25 @@ export function WelcomeModal() {
               </li>
             </ul>
           </details>
+
+          {decodedFromL1 && (
+            <>
+              <p
+                style={{
+                  textAlign: "left",
+                  marginBottom: "8px",
+                  marginTop: "16px",
+                  lineHeight: "1.6",
+                }}
+              >
+                Decoded from the UTM's tape:
+              </p>
+              <TapeView
+                tm={decodedFromL1}
+                stateDescriptions={flipBitsSpec.stateDescriptions}
+              />
+            </>
+          )}
         </div>
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
@@ -322,7 +329,8 @@ export function WelcomeModal() {
         <hr style={{ margin: "3em 0" }} />
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
-          Anyway, here's <i>another</i> UTM simulating <i>that</i> one:
+          And a UTM is, of course, itself a Turing machine, so it can simulate
+          itself too:
         </p>
 
         <div style={{ margin: "0 10% 16px" }}>
@@ -334,6 +342,40 @@ export function WelcomeModal() {
               stateDescriptions={utmSpec.stateDescriptions}
             />
           </div>
+
+          <details className="aside">
+            <summary>Nitty-gritty details for the curious</summary>
+
+            <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
+              If you look closely at this UTM's looooong rules section, you'll
+              notice not all the rules have the same format.{" "}
+              <code>.10100001|0010|10100001|0000|R;</code>
+              should look familiar, the same format as the bit-flipper rules;
+              but <code>.01011101,0,1000,1011,1101|R;</code> is new.
+            </p>
+
+            <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
+              This is because -- and I cannot believe I am writing this -- I did
+              some performance optimization on the UTM.
+              <ol>
+                <li>
+                  <code>.STATE,SYM,SYM,SYM|DIR;</code> means "if you're in state
+                  STATE, and you see any of these SYMbols, don't change state,
+                  don't overwrite the symbol, just move DIR."
+                </li>
+                <li>
+                  ...and also, those <code>SYM</code>s are actually{" "}
+                  <i>prefixes</i> -- a SYM of <code>0</code> means "any symbol
+                  whose binary representation starting with 0."
+                </li>
+              </ol>
+              Together, those tricks greatly reduce the number of
+              bit-comparisons the UTM needs to do in order to find the
+              applicable rule, when the simulated TM is in a state where it's
+              scanning through the tape looking for a particular symbol. (Which,
+              recall, is how the UTM spends most of its time.)
+            </p>
+          </details>
 
           {decodedFromL2 && (
             <>
@@ -367,40 +409,6 @@ export function WelcomeModal() {
               />
             </>
           )}
-
-          <details>
-            <summary>Nitty-gritty details for the curious</summary>
-
-            <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
-              If you look closely at this UTM's looooong rules section, you'll
-              notice not all the rules have the same format.{" "}
-              <code>.10100001|0010|10100001|0000|R;</code>
-              should look familiar, the same format as the bit-flipper rules;
-              but <code>.01011101,0,1000,1011,1101|R;</code> is new.
-            </p>
-
-            <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
-              This is because -- and I cannot believe I am writing this -- I did
-              some performance optimization on the UTM.
-              <ol>
-                <li>
-                  <code>.STATE,SYM,SYM,SYM|DIR;</code> means "if you're in state
-                  STATE, and you see any of these SYMbols, don't change state,
-                  don't overwrite the symbol, just move DIR."
-                </li>
-                <li>
-                  ...and also, those <code>SYM</code>s are actually{" "}
-                  <i>prefixes</i> -- a SYM of <code>0</code> means "any symbol
-                  whose binary representation starting with 0."
-                </li>
-              </ol>
-              Together, those tricks greatly reduce the number of
-              bit-comparisons the UTM needs to do in order to find the
-              applicable rule, when the simulated TM is in a state where it's
-              scanning through the tape looking for a particular symbol. (Which,
-              recall, is how the UTM spends most of its time.)
-            </p>
-          </details>
         </div>
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>

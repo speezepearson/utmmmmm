@@ -43,12 +43,6 @@ export function TuringMachineViewer({
       </div>
 
       <TapeView tm={snapshot} stateDescriptions={stateDescriptions} />
-
-      {halted && (
-        <div className={`tm-result tm-result-${status}`}>
-          {status.toUpperCase()}
-        </div>
-      )}
     </div>
   );
 }
