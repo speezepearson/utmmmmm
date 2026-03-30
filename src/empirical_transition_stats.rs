@@ -4,10 +4,10 @@
 
 use std::collections::HashMap;
 
-use crate::utm::{MyUtmSpec, State, Symbol, TmTransitionStats};
+use crate::utm::{MyUtmSpec, State, Symbol};
 
-pub fn make_empirical_transition_stats() -> TmTransitionStats<MyUtmSpec> {
-    TmTransitionStats(HashMap::from([
+pub fn make_empirical_transition_stats() -> HashMap<(State, Symbol), usize> {
+    HashMap::from([
         ((State::Init, Symbol::Dollar), 1),
         ((State::CmpSymC1Fb, Symbol::Zero), 1),
         ((State::RdSk2, Symbol::Pipe), 2),
@@ -529,5 +529,5 @@ pub fn make_empirical_transition_stats() -> TmTransitionStats<MyUtmSpec> {
         ((State::InitSeekEnd, Symbol::Zero), 29430546),
         ((State::DoneSeekHome, Symbol::Zero), 29517780),
         ((State::MrFindHead, Symbol::Zero), 51948332),
-    ]))
+    ])
 }

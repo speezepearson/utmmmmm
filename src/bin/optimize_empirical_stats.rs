@@ -4,14 +4,14 @@ use utmmmmm::compiled::{CState, CSymbol, CompiledTuringMachineSpec};
 use utmmmmm::infinity::InfiniteTape;
 use utmmmmm::tm::{Dir, RunningTuringMachine, TuringMachineSpec};
 use utmmmmm::utm::{
-    make_utm_spec, MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol, TmTransitionStats,
+    make_utm_spec, MyUtmSpec, MyUtmSpecOptimizationHints, State, Symbol,
 };
 
 fn run_and_tally(
     utm_spec: &MyUtmSpec,
     hints: &MyUtmSpecOptimizationHints<MyUtmSpec>,
     max_steps: u64,
-) -> (u64, TmTransitionStats<MyUtmSpec>) {
+) -> (u64, HashMap<(State, Symbol), usize>) {
     let compiled = CompiledTuringMachineSpec::compile(utm_spec).expect("UTM should compile");
 
     let mut tm = RunningTuringMachine::new(&compiled);
@@ -54,7 +54,7 @@ fn run_and_tally(
 
     (
         inner_steps,
-        TmTransitionStats(HashMap::from_iter(
+        HashMap::from_iter(
             tallies
                 .iter()
                 .enumerate()
@@ -68,13 +68,13 @@ fn run_and_tally(
                         count,
                     )
                 }),
-        )),
+        ),
     )
 }
 
-fn codegen(stats: &TmTransitionStats<MyUtmSpec>) -> String {
+fn codegen(stats: &HashMap<(State, Symbol), usize>) -> String {
     // Sort by tally count ascending (least used first, most used last)
-    let mut entries: Vec<_> = stats.0.iter().collect();
+    let mut entries: Vec<_> = stats.iter().collect();
     entries.sort_by_key(|(_, &count)| count);
 
     let mut code = String::new();
@@ -111,7 +111,7 @@ fn main() {
     let initial_hints = utmmmmm::optimization_hints::make_my_utm_self_optimization_hints();
 
     let mut best_inner_steps: u64 = 0;
-    let mut best_stats: Option<TmTransitionStats<MyUtmSpec>> = None;
+    let mut best_stats: Option<HashMap<(State, Symbol), usize>> = None;
     let mut current_hints = initial_hints;
     let mut iteration = 0;
     let mut prev_inner_steps: u64 = 0;
@@ -134,7 +134,7 @@ fn main() {
 
         if inner_steps > best_inner_steps {
             best_inner_steps = inner_steps;
-            best_stats = Some(TmTransitionStats(stats.0.clone()));
+            best_stats = Some(stats.clone());
             eprintln!("  New best! {} inner steps", best_inner_steps);
         }
 
@@ -152,7 +152,7 @@ fn main() {
         prev_inner_steps = inner_steps;
 
         // Build new hints from the tallies
-        current_hints = stats.make_optimization_hints(&utm_spec);
+        current_hints = MyUtmSpecOptimizationHints::from_transition_stats(&utm_spec, &stats);
     }
 
     let best = best_stats.expect("should have at least one result");

@@ -1668,39 +1668,34 @@ pub fn run_until_inner_step<Spec: UtmSpec>(
     Err(RunUntilResult::StepLimit)
 }
 
-pub struct TmTransitionStats<Guest: TuringMachineSpec>(
-    pub HashMap<(Guest::State, Guest::Symbol), usize>,
-);
-impl<Guest: TuringMachineSpec> Default for TmTransitionStats<Guest> {
-    fn default() -> Self {
-        Self(HashMap::new())
-    }
+pub struct MyUtmSpecOptimizationHints<Guest: TuringMachineSpec> {
+    pub rules: Vec<GuestRule>,
+    pub state_encodings: HashMap<Guest::State, usize>,
+    pub symbol_encodings: HashMap<Guest::Symbol, usize>,
+    pub transition_stats: HashMap<(Guest::State, Guest::Symbol), usize>,
 }
-impl<Guest: TuringMachineSpec> TmTransitionStats<Guest> {
-    pub fn make_optimization_hints(&self, guest: &Guest) -> MyUtmSpecOptimizationHints<Guest> {
-        MyUtmSpecOptimizationHints {
-            transition_stats: self.0.clone(),
-            state_encodings: self.get_optimal_state_encoding(guest),
-            symbol_encodings: self.get_optimal_symbol_encoding(guest),
-        }
+impl<Guest: TuringMachineSpec> MyUtmSpecOptimizationHints<Guest> {
+    pub fn guess(guest: &Guest) -> Self {
+        Self::from_transition_stats(guest, &HashMap::new())
     }
-
-    pub fn get_optimal_state_encoding(&self, guest: &Guest) -> HashMap<Guest::State, usize> {
-        // todo!()
-        guest
+    pub fn from_transition_stats(guest: &Guest, transition_stats: &HashMap<(Guest::State, Guest::Symbol), usize>) -> Self {
+        let state_encodings = guest
             .iter_states()
             .enumerate()
             .map(|(i, s)| (s, i))
-            .collect()
-    }
-
-    pub fn get_optimal_symbol_encoding(&self, guest: &Guest) -> HashMap<Guest::Symbol, usize> {
-        // todo!()
-        guest
+            .collect();
+        let symbol_encodings = guest
             .iter_symbols()
             .enumerate()
             .map(|(i, s)| (s, i))
-            .collect()
+            .collect();
+        let rules = group_rules(&guest.iter_rules().collect::<Vec<_>>(), &state_encodings, &symbol_encodings, transition_stats);
+        Self {
+            rules,
+            state_encodings,
+            symbol_encodings,
+            transition_stats: transition_stats.clone(),
+        }
     }
 }
 
@@ -1839,23 +1834,26 @@ pub fn serialize_rules(rules: &[GuestRule], n_state_bits: usize, n_sym_bits: usi
 /// Noop rules for the same (state, direction) are grouped into a single NoopGroup.
 /// The resulting Vec is sorted by ascending sum of transition stat counts,
 /// so the UTM (which scans rules right-to-left) finds frequent rules first.
-pub fn group_rules<Guest: TuringMachineSpec>(
+pub fn group_rules<GState, GSymbol>
+(
     rules: &[(
-        Guest::State,
-        Guest::Symbol,
-        Guest::State,
-        Guest::Symbol,
+        GState,
+        GSymbol,
+        GState,
+        GSymbol,
         Dir,
     )],
-    state_encodings: &HashMap<Guest::State, usize>,
-    symbol_encodings: &HashMap<Guest::Symbol, usize>,
-    transition_stats: &HashMap<(Guest::State, Guest::Symbol), usize>,
-) -> Vec<GuestRule> {
+    state_encodings: &HashMap<GState, usize>,
+    symbol_encodings: &HashMap<GSymbol, usize>,
+    transition_stats: &HashMap<(GState, GSymbol), usize>,
+) -> Vec<GuestRule> 
+where GState: Eq + Hash + Copy, GSymbol: Eq + Hash + Copy,
+{
     // Identify noop rules and group by (state_encoding, dir)
     let mut noop_groups: HashMap<(usize, Dir), Vec<usize>> = HashMap::new();
-    let mut noop_set: HashSet<(Guest::State, Guest::Symbol)> = HashSet::new();
+    let mut noop_set: HashSet<(GState, GSymbol)> = HashSet::new();
     // Track Guest-typed keys per noop group for stat lookups
-    let mut noop_group_keys: HashMap<(usize, Dir), Vec<(Guest::State, Guest::Symbol)>> =
+    let mut noop_group_keys: HashMap<(usize, Dir), Vec<(GState, GSymbol)>> =
         HashMap::new();
 
     for &(st, sym, nst, nsym, dir) in rules {
@@ -1916,18 +1914,6 @@ pub fn group_rules<Guest: TuringMachineSpec>(
     result.into_iter().map(|(rule, _)| rule).collect()
 }
 
-pub struct MyUtmSpecOptimizationHints<Guest: TuringMachineSpec> {
-    pub transition_stats: HashMap<(Guest::State, Guest::Symbol), usize>,
-    pub state_encodings: HashMap<Guest::State, usize>,
-    pub symbol_encodings: HashMap<Guest::Symbol, usize>,
-}
-impl<Guest: TuringMachineSpec> MyUtmSpecOptimizationHints<Guest> {
-    pub fn guess(guest: &Guest) -> Self {
-        let stats = TmTransitionStats::default();
-        stats.make_optimization_hints(guest)
-    }
-}
-
 impl MyUtmSpec {
     /// Encode a guest TM onto the UTM tape.
     ///
@@ -1976,7 +1962,7 @@ impl MyUtmSpec {
 
         // RULES section: # .rule1 ; .rule2 ; .rule3 ...
         tape.push(Symbol::Hash);
-        let guest_rules = group_rules::<Guest>(
+        let guest_rules = group_rules(
             &all_rules,
             &hints.state_encodings,
             &hints.symbol_encodings,
