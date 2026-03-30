@@ -76,10 +76,9 @@ fn codegen(stats: &BTreeMap<(State, Symbol), usize>) -> String {
     code.push_str("// This file contains empirically-derived transition statistics\n");
     code.push_str("// for optimizing UTM rule ordering.\n\n");
     code.push_str("use std::collections::BTreeMap;\n\n");
-    code.push_str("use crate::utm::{ State, Symbol, TmTransitionStats};\n\n");
-    code.push_str("pub fn make_empirical_transition_stats() -> TmTransitionStats<MyUtmSpec> {\n");
-    code.push_str("    TmTransitionStats(BTreeMap::from([\n");
-
+    code.push_str("use crate::utm::{ State, Symbol, };\n\n");
+    code.push_str("pub fn make_empirical_transition_stats() -> BTreeMap<(State, Symbol), usize> {\n");
+    code.push_str("    BTreeMap::from([\n");
     for ((state, symbol), count) in &entries {
         code.push_str(&format!(
             "        ((State::{:?}, Symbol::{:?}), {}),\n",
@@ -87,7 +86,7 @@ fn codegen(stats: &BTreeMap<(State, Symbol), usize>) -> String {
         ));
     }
 
-    code.push_str("    ]))\n");
+    code.push_str("    ])\n");
     code.push_str("}\n");
 
     code
