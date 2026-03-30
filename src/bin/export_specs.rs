@@ -1,6 +1,7 @@
 use serde::Serialize;
 use utmmmmm::gen_utm::{Encoder, UtmSpec as _};
 use utmmmmm::json_export::{export_spec, JsonTuringMachineSpec};
+use utmmmmm::optimization_hints::make_my_utm_self_optimization_hints;
 use utmmmmm::tm::RunningTuringMachine;
 use utmmmmm::toy_machines::*;
 use utmmmmm::utm;
@@ -407,8 +408,7 @@ fn main() {
         let l1_tape = utm_spec.encoder(guest.spec).encode(&guest);
         let mut l1_tm = RunningTuringMachine::new(&utm_spec);
         l1_tm.tape = l1_tape;
-        utm_spec
-            .encoder(l1_tm.spec)
+        make_my_utm_self_optimization_hints(&utm_spec)
             .encode(&l1_tm)
             .iter()
             .map(|s| utm_symbol_to_string(*s))

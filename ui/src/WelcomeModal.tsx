@@ -8,6 +8,7 @@ import {
 import { machineSpecs, rustExport } from "./parseSpec";
 import { decodeFromUtm } from "./utmEncoding";
 import { TapeView } from "./TapeView";
+import { must } from "./util";
 
 const STORAGE_KEY = "welcomeModalDismissed";
 
@@ -46,7 +47,7 @@ export function WelcomeModal() {
 
   // Decoded L1 -> flip-bits guest
   const initialDecodedL1 = useMemo(
-    () => decodeFromUtm(flipBitsSpec.spec, utm1Snapshot.tape),
+    () => must(decodeFromUtm(flipBitsSpec.spec, utm1Snapshot)),
     [utm1Snapshot],
   );
 
@@ -59,12 +60,9 @@ export function WelcomeModal() {
 
   const onUtm1StateChange = useCallback(
     (_oldState: State, cur: TuringMachineSnapshot) => {
-      if (cur.state === "Init") {
-        try {
-          setDecodedFromL1(decodeFromUtm(flipBitsSpec.spec, cur.tape));
-        } catch {
-          // SWALLOW_EXCEPTION: UTM may be mid-operation with an undecodable tape during Init transitions
-        }
+      const decoded = decodeFromUtm(flipBitsSpec.spec, cur);
+      if (decoded) {
+        setDecodedFromL1(decoded);
       }
     },
     [],
@@ -72,15 +70,15 @@ export function WelcomeModal() {
 
   // Decoded L2 -> L1 UTM guest, then L1 -> flip-bits guest
   const initialDecodedL2 = useMemo(() => {
-    const l1 = decodeFromUtm(utmSpec.spec, utm2Snapshot.tape);
-    const l0 = decodeFromUtm(flipBitsSpec.spec, l1.tape);
+    const l1 = must(decodeFromUtm(utmSpec.spec, utm2Snapshot));
+    const l0 = must(decodeFromUtm(flipBitsSpec.spec, l1));
     return { l1, l0 };
   }, [utm2Snapshot]);
 
   const [decodedFromL2, setDecodedFromL2] = useState<{
     l1: TuringMachineSnapshot;
     l0: TuringMachineSnapshot;
-  } | null>(null);
+  }>(initialDecodedL2);
 
   useEffect(() => {
     setDecodedFromL2(initialDecodedL2);
@@ -88,15 +86,10 @@ export function WelcomeModal() {
 
   const onUtm2StateChange = useCallback(
     (_oldState: State, cur: TuringMachineSnapshot) => {
-      if (cur.state === "Init") {
-        try {
-          const l1 = decodeFromUtm(utmSpec.spec, cur.tape);
-          const l0 = decodeFromUtm(flipBitsSpec.spec, l1.tape);
-          setDecodedFromL2({ l1, l0 });
-        } catch {
-          // SWALLOW_EXCEPTION: UTM may be mid-operation with an undecodable tape during Init transitions
-        }
-      }
+      const l1 = decodeFromUtm(utmSpec.spec, cur);
+      if (l1) setDecodedFromL2((l) => ({ ...l, l1 }));
+      const l2 = l1 && decodeFromUtm(flipBitsSpec.spec, l1);
+      if (l2) setDecodedFromL2((l) => ({ ...l, l2 }));
     },
     [],
   );

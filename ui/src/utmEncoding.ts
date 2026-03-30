@@ -36,8 +36,9 @@ function fromBinary(
 
 export function decodeFromUtm(
   guestSpec: TuringMachineSpec,
-  utmTape: readonly Symbol[],
-): TuringMachineSnapshot {
+  utm: TuringMachineSnapshot,
+): TuringMachineSnapshot | undefined {
+  if (!(utm.state === "DoneSeekHome" || utm.state === "Init")) return undefined;
   const guestStates = guestSpec.allStates;
   const guestSymbols = guestSpec.allSymbols;
   const nStateBits = numBits(guestStates.length);
@@ -45,8 +46,8 @@ export function decodeFromUtm(
 
   // Find # delimiters
   const hashes: number[] = [];
-  for (let i = 0; i < utmTape.length; i++) {
-    if (utmTape[i] === "#") hashes.push(i);
+  for (let i = 0; i < utm.tape.length; i++) {
+    if (utm.tape[i] === "#") hashes.push(i);
   }
   if (hashes.length < 4) {
     throw new Error(`Expected at least 4 # delimiters, found ${hashes.length}`);
@@ -54,11 +55,11 @@ export function decodeFromUtm(
 
   // STATE section: between hashes[2] and hashes[3]
   const stateStart = hashes[2] + 1;
-  const state = guestStates[fromBinary(utmTape, stateStart, nStateBits)];
+  const state = guestStates[fromBinary(utm.tape, stateStart, nStateBits)];
 
   // TAPE section: after hashes[3]
   const tapeStart = hashes[3] + 1;
-  const tapeSection = utmTape.slice(tapeStart);
+  const tapeSection = utm.tape.slice(tapeStart);
 
   const cells: number[] = [];
   let headPos = 0;

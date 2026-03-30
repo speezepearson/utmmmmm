@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getStatus, makeInitSnapshot, run, Symbol } from "./types";
+import { getStatus, makeInitSnapshot, run, State, Symbol } from "./types";
 import { machineSpecs, rustExport } from "./parseSpec";
 import { decodeFromUtm } from "./utmEncoding";
+import { must } from "./test-util";
 
 function getSpec(name: string) {
   const spec = machineSpecs.find((s) => s.name === name);
@@ -31,10 +32,17 @@ describe("welcomeModalExample tapes decode correctly", () => {
     const { welcomeModalExample } = rustExport;
 
     // L2 tape -> decode with utmSpec guest -> L1 UTM snapshot
-    const l1 = decodeFromUtm(utm.spec, welcomeModalExample.doubleUtmInput);
+    const l1 = must(
+      decodeFromUtm(utm.spec, {
+        tape: welcomeModalExample.doubleUtmInput,
+        state: State.parse("Init"),
+        spec: utm.spec,
+        pos: 0,
+      }),
+    );
 
     // L1 tape -> decode with flipBitsSpec guest -> flip-bits snapshot
-    const l0 = decodeFromUtm(flipBits.spec, l1.tape);
+    const l0 = must(decodeFromUtm(flipBits.spec, l1));
 
     expect(l0.tape).toEqual(welcomeModalExample.bitFlipperInput);
     expect(l0.pos).toBe(0);
