@@ -175,6 +175,7 @@ export function WelcomeModal() {
             initialFps={5}
             stateDescriptions={flipBitsSpec.stateDescriptions}
           />
+          (The head pos is colored red.)
         </div>
 
         <hr style={{ margin: "3em 0" }} />
@@ -198,7 +199,8 @@ export function WelcomeModal() {
             initialFps={30}
             stateDescriptions={utmSpec.stateDescriptions}
           />
-
+          (The green squares have no mechanical significance; they just call out
+          points of interest.)
           {decodedFromL1 && (
             <>
               <p
@@ -217,11 +219,14 @@ export function WelcomeModal() {
               />
             </>
           )}
-
           <details>
             <summary>Nitty-gritty details for the curious</summary>
 
             <ul>
+              <li>
+                We encode all the simulated machine's states/symbols into binary
+                strings.
+              </li>
               <li>
                 The UTM's tape layout is:{" "}
                 <code>$ # ACCEPTSTATES # BLANK # RULES # STATE # TAPE</code>
@@ -300,39 +305,14 @@ export function WelcomeModal() {
         </div>
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
-          You can kinda see how it works:
-          <ul>
-            <li>
-              It encodes all the simulated machine's states/symbols into binary
-              strings.
-            </li>
-            <li>
-              It has a description of all the simulated machine's state
-              transitions: <code>.0|10|0|01|R;</code> means "if you're in state
-              0, and you see symbol 10, then stay in state 0, and write symbol
-              01, and move right."
-            </li>
-            <li>
-              Also delimited by <code>#</code>s, there's: the list of accepting
-              states (here, just state <code>1</code>); the machine's "blank"
-              symbol that should be used to fill in the right-hand side of the
-              tape (here, symbol <code>00</code>); the machine's current state
-              (it starts in state <code>0</code>);
-            </li>
-            <li>
-              ...and, finally, the simulated machine's encoded tape, stretching
-              off to infinity. Each cell is delimited with a comma (or, for the
-              cell the simulated machine's head is pointing at, <code>^</code>).
-            </li>
-          </ul>
-          The UTM, simulating the machine, spends almost all of its time going
-          through the rule list trying to find which one matches the simulated
-          machine's current [state+symbol], going back and forth between [the
-          rule it's currently checking] and [the simulated state/head sections],
-          comparing one bit at a time. When if finds a matching rule, it copies
-          the rule's new state into the state register (one bit at a time, as
-          always), and the new symbol into the cell the simulated head is
-          pointed at.
+          You can kinda see how it works: it represents the simulated machine's
+          state/symbols as binary; it tracks the simulated machine's state (the{" "}
+          <code>#0#</code>); and it tracks the simulated machine's head (the{" "}
+          <code>^</code>). It has a description of all the simulated machine's
+          transition rules e.g. <code>.0|10|0|01|R;</code>, and it goes through
+          them one by one to see which is applicable to the current
+          state/symbol, then copies over the applied rule's new state/symbol and
+          moves the machine's simulated head (marked <code>^</code>).
         </p>
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>

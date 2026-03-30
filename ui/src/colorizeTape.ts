@@ -1,4 +1,4 @@
-const GREEN_SYMS = new Set(["*", "X", "Y", "^", ">"]);
+const GREEN_SYMS = new Set(["*", "X", "Y", "^", ">", "#"]);
 
 export function colorizeTape(tape: string[], headPos: number): string {
   let out = "";
