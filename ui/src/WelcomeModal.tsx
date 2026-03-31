@@ -214,11 +214,12 @@ export function WelcomeModal() {
             <ul>
               <li>
                 We encode all the simulated machine's states/symbols into binary
-                strings.
+                strings. This bit-flipper just has 2 states ("flip"=0, "done"=1)
+                and 3 symbols ("blank"=00, "0"=01, "1"=10).
               </li>
               <li>
                 The UTM's tape layout is:{" "}
-                <code>$ # ACCEPTSTATES # BLANK # RULES # STATE # TAPE</code>
+                <code>$ ACCEPTSTATES # BLANK # RULES # STATE # TAPE</code>
                 <ul>
                   <li>
                     <code>ACCEPTSTATES</code> is a list of the simulated
@@ -263,8 +264,9 @@ export function WelcomeModal() {
                   <li>
                     Compare the rule's <code>STATE</code> to the simulated
                     machine's <code>STATE</code>. (Comparisons happen one bit at
-                    a time: translate 0/1 to X/Y, one bit at a time. On any
-                    mismatch, clean up the X/Y transformation and abort.) On a
+                    a time: translate 0/1 to X/Y to remember which ones you've
+                    already compared, one by one, until you reach the end or
+                    find a mismatch. Then clean up X/Y back to 0/1.) On a
                     mismatch, this rule doesn't apply; move on to the next one.
                   </li>
                   <li>
@@ -315,12 +317,14 @@ export function WelcomeModal() {
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
           You can kinda see how it works: it represents the simulated machine's
           state/symbols as binary; it tracks the simulated machine's state (the{" "}
-          <code>#0#</code>); and it tracks the simulated machine's head (the{" "}
-          <code>^</code>). It has a description of all the simulated machine's
-          transition rules e.g. <code>.0|10|0|01|R;</code>, and it goes through
-          them one by one to see which is applicable to the current
-          state/symbol, then copies over the applied rule's new state/symbol and
-          moves the machine's simulated head (marked <code>^</code>).
+          <code>#0#</code> means "in state 0"); and it tracks the simulated
+          machine's head (the <code>^</code>). It has a description of all the
+          simulated machine's transition rules e.g. <code>.0|10|0|01|R;</code>{" "}
+          ("in state 0, if you see symbol 10, then stay in state 0, write symbol
+          01, and move right"), and it goes through them one by one to see which
+          is applicable to the current state/symbol, then copies over the
+          applied rule's new state/symbol and moves the machine's simulated
+          head.
         </p>
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
