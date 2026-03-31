@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import cytoscape from "cytoscape";
 // @ts-expect-error no type declarations for cytoscape-elk
 import elk from "cytoscape-elk";
@@ -13,149 +13,9 @@ type Props = {
   currentSymbol?: Symbol;
 };
 
-type ElkParams = {
-  algorithm: string;
-  direction: string;
-  nodeSpacing: number;
-  layerSpacing: number;
-  edgeEdgeSpacing: number;
-  edgeNodeSpacing: number;
-  compactionStrategy: string;
-  hierarchyHandling: string;
-};
-
-const DEFAULT_ELK: ElkParams = {
-  algorithm: "layered",
-  direction: "RIGHT",
-  nodeSpacing: 15,
-  layerSpacing: 30,
-  edgeEdgeSpacing: 8,
-  edgeNodeSpacing: 10,
-  compactionStrategy: "IMPROVE_STRAIGHTNESS",
-  hierarchyHandling: "INCLUDE_CHILDREN",
-};
-
-const ALGORITHMS = [
-  "layered",
-  "mrtree",
-  "stress",
-  "force",
-  "radial",
-  "box",
-  "disco",
-];
-const DIRECTIONS = ["RIGHT", "DOWN", "LEFT", "UP"];
-const COMPACTION_STRATEGIES = ["NONE", "IMPROVE_STRAIGHTNESS", "NODE_SIZE"];
-const HIERARCHY_MODES = ["INCLUDE_CHILDREN", "SEPARATE_CHILDREN", "INHERIT"];
-
-function ElkControls({
-  params,
-  onChange,
-}: {
-  params: ElkParams;
-  onChange: (p: ElkParams) => void;
-}) {
-  const set = <K extends keyof ElkParams>(key: K, val: ElkParams[K]) =>
-    onChange({ ...params, [key]: val });
-
-  return (
-    <div className="tm-elk-controls">
-      <label>
-        Algorithm
-        <select
-          value={params.algorithm}
-          onChange={(e) => set("algorithm", e.target.value)}
-        >
-          {ALGORITHMS.map((a) => (
-            <option key={a}>{a}</option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Direction
-        <select
-          value={params.direction}
-          onChange={(e) => set("direction", e.target.value)}
-        >
-          {DIRECTIONS.map((d) => (
-            <option key={d}>{d}</option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Node spacing
-        <input
-          type="range"
-          min={1}
-          max={100}
-          value={params.nodeSpacing}
-          onChange={(e) => set("nodeSpacing", +e.target.value)}
-        />
-        <span>{params.nodeSpacing}</span>
-      </label>
-      <label>
-        Layer spacing
-        <input
-          type="range"
-          min={1}
-          max={200}
-          value={params.layerSpacing}
-          onChange={(e) => set("layerSpacing", +e.target.value)}
-        />
-        <span>{params.layerSpacing}</span>
-      </label>
-      <label>
-        Edge-edge spacing
-        <input
-          type="range"
-          min={1}
-          max={50}
-          value={params.edgeEdgeSpacing}
-          onChange={(e) => set("edgeEdgeSpacing", +e.target.value)}
-        />
-        <span>{params.edgeEdgeSpacing}</span>
-      </label>
-      <label>
-        Edge-node spacing
-        <input
-          type="range"
-          min={1}
-          max={50}
-          value={params.edgeNodeSpacing}
-          onChange={(e) => set("edgeNodeSpacing", +e.target.value)}
-        />
-        <span>{params.edgeNodeSpacing}</span>
-      </label>
-      <label>
-        Compaction
-        <select
-          value={params.compactionStrategy}
-          onChange={(e) => set("compactionStrategy", e.target.value)}
-        >
-          {COMPACTION_STRATEGIES.map((s) => (
-            <option key={s}>{s}</option>
-          ))}
-        </select>
-      </label>
-      <label>
-        Hierarchy
-        <select
-          value={params.hierarchyHandling}
-          onChange={(e) => set("hierarchyHandling", e.target.value)}
-        >
-          {HIERARCHY_MODES.map((m) => (
-            <option key={m}>{m}</option>
-          ))}
-        </select>
-      </label>
-    </div>
-  );
-}
-
 export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<cytoscape.Core | null>(null);
-  const [elkParams, setElkParams] = useState<ElkParams>(DEFAULT_ELK);
 
   // Build cytoscape elements + run layout
   useEffect(() => {
@@ -295,17 +155,14 @@ export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
         name: "elk",
         nodeDimensionsIncludeLabels: true,
         elk: {
-          algorithm: elkParams.algorithm,
-          "elk.direction": elkParams.direction,
-          "spacing.nodeNode": String(elkParams.nodeSpacing),
-          "layered.spacing.nodeNodeBetweenLayers": String(
-            elkParams.layerSpacing,
-          ),
-          "spacing.edgeEdge": String(elkParams.edgeEdgeSpacing),
-          "spacing.edgeNode": String(elkParams.edgeNodeSpacing),
-          "layered.compaction.postCompaction.strategy":
-            elkParams.compactionStrategy,
-          hierarchyHandling: elkParams.hierarchyHandling,
+          algorithm: "layered",
+          "elk.direction": "RIGHT",
+          "spacing.nodeNode": "15",
+          "layered.spacing.nodeNodeBetweenLayers": "30",
+          "spacing.edgeEdge": "8",
+          "spacing.edgeNode": "10",
+          "layered.compaction.postCompaction.strategy": "IMPROVE_STRAIGHTNESS",
+          hierarchyHandling: "INCLUDE_CHILDREN",
         },
         padding: 20,
       } as cytoscape.LayoutOptions,
@@ -320,7 +177,7 @@ export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
       cy.destroy();
       cyRef.current = null;
     };
-  }, [graph, elkParams]);
+  }, [graph]);
 
   // Update highlighting
   useEffect(() => {
@@ -348,20 +205,17 @@ export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
   }, [currentState, currentSymbol]);
 
   return (
-    <div>
-      <ElkControls params={elkParams} onChange={setElkParams} />
-      <div
-        ref={containerRef}
-        className="tm-state-graph"
-        style={{
-          width: "100%",
-          height: "500px",
-          border: "1px solid var(--border, #ccc)",
-          borderRadius: "8px",
-          margin: "8px 0",
-          background: "var(--code-bg, #f8fafc)",
-        }}
-      />
-    </div>
+    <div
+      ref={containerRef}
+      className="tm-state-graph"
+      style={{
+        width: "100%",
+        height: "500px",
+        border: "1px solid var(--border, #ccc)",
+        borderRadius: "8px",
+        margin: "8px 0",
+        background: "var(--code-bg, #f8fafc)",
+      }}
+    />
   );
 }
