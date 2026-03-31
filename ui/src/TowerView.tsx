@@ -216,8 +216,7 @@ function TowerLevelView({
         }}
         dangerouslySetInnerHTML={{
           __html:
-            colorizeTape(level.tape, level.headPos) +
-            " &nbsp;&nbsp;&nbsp; ...",
+            colorizeTape(level.tape, level.headPos) + " &nbsp;&nbsp;&nbsp; ...",
         }}
       />
     </div>

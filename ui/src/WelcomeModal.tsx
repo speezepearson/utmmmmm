@@ -162,12 +162,11 @@ export function WelcomeModal() {
         </h1>
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
-          Here's a simple Turing machine (you know what a{" "}
+          Here's a simple{" "}
           <a href="https://en.wikipedia.org/wiki/Turing_machine">
             Turing machine
           </a>{" "}
-          is, right?), which takes a tape of 0/1s, flips them all, and then
-          halts:
+          , which takes a tape of 0/1s, flips them all, and then halts:
         </p>
 
         <div style={{ margin: "0 10%" }}>

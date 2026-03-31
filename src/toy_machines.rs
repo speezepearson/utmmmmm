@@ -257,7 +257,7 @@ pub static FLIP_BITS_SPEC: LazyLock<SimpleTuringMachineSpec<FlipBitsState, FlipB
             transitions: BTreeMap::from([
                 ((Flip, Zero), (Flip, One, Dir::Right)),
                 ((Flip, One), (Flip, Zero, Dir::Right)),
-                ((Flip, Blank), (Done, Blank, Dir::Left)),
+                ((Flip, Blank), (Done, Blank, Dir::Right)),
             ]),
             all_states: vec![Flip, Done],
             all_symbols: vec![Blank, Zero, One],
