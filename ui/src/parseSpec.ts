@@ -74,3 +74,7 @@ export const rustExport = RustExportSchema.parse(rawRustExport);
 
 export const machineSpecs: ParsedSpec[] =
   rustExport.machineSpecs.map(parseSpec);
+
+export const utmSpec = machineSpecs.find(
+  (s) => s.name === "Universal Turing Machine",
+)!;
