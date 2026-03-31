@@ -175,6 +175,47 @@
   border-radius: 2px;
 }
 
+.tm-elk-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  margin: 8px 0;
+  padding: 8px 12px;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.tm-elk-controls label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.tm-elk-controls select {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 1px 4px;
+  border-radius: 3px;
+  border: 1px solid var(--border);
+  background: var(--social-bg);
+  color: var(--text-h);
+}
+
+.tm-elk-controls input[type="range"] {
+  width: 60px;
+}
+
+.tm-elk-controls span {
+  min-width: 2ch;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .tm-state-graph-empty {
   font-family: var(--mono);
   font-size: 13px;
