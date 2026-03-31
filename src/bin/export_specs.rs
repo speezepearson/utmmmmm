@@ -1,8 +1,41 @@
-use utmmmmm::json_export::export_spec;
+use serde::Serialize;
+use utmmmmm::gen_utm::{Encoder, UtmSpec as _};
+use utmmmmm::json_export::{export_spec, JsonTuringMachineSpec};
+use utmmmmm::optimization_hints::make_my_utm_self_optimization_hints;
+use utmmmmm::tm::RunningTuringMachine;
 use utmmmmm::toy_machines::*;
 use utmmmmm::utm;
+use utmmmmm::utm::make_utm_spec;
+
+fn utm_symbol_to_string(s: utm::Symbol) -> String {
+    format!("{}", s)
+}
+
+#[derive(Serialize)]
+struct RustExport {
+    #[serde(rename = "machineSpecs")]
+    machine_specs: Vec<JsonTuringMachineSpec>,
+    #[serde(rename = "welcomeModalExample")]
+    welcome_modal_example: WelcomeModalExample,
+}
+
+#[derive(Serialize)]
+struct WelcomeModalExample {
+    #[serde(rename = "bitFlipperSpec")]
+    bit_flipper_spec: JsonTuringMachineSpec,
+    #[serde(rename = "utmSpec")]
+    utm_spec: JsonTuringMachineSpec,
+    #[serde(rename = "bitFlipperInput")]
+    bit_flipper_input: Vec<String>,
+    #[serde(rename = "utmInput")]
+    utm_input: Vec<String>,
+    #[serde(rename = "doubleUtmInput")]
+    double_utm_input: Vec<String>,
+}
 
 fn main() {
+    let utm_spec = make_utm_spec();
+
     let specs = vec![
         export_spec(
             &*ACCEPT_IMMEDIATELY_SPEC,
@@ -102,7 +135,7 @@ fn main() {
             },
         ),
         export_spec(
-            &*utm::UTM_SPEC,
+            &utm_spec,
             "Universal Turing Machine",
             "A universal Turing machine that can simulate any other TM given an encoded description on its tape.",
             |s| format!("{:?}", s),
@@ -112,20 +145,18 @@ fn main() {
 
                 // Phase 0: Init
                 utm::State::Init => "starting a new simulation cycle",
-                utm::State::InitSkip => "skipping initial $ delimiter",
+                utm::State::InitSkip => "skipping accept and blank sections to reach rules",
                 utm::State::InitSeekEnd => "scanning right to find end of rules section",
 
                 // Phase 1: Mark Rule
                 utm::State::MarkRule => "searching left for next rule to try",
-                utm::State::MarkRuleNoMatch => "no more rules to try; scanning right to check accept states",
+                utm::State::MarkRuleNoMatch => "no more rules to try; seeking home to check accept states",
 
                 // Phase 2: Compare State
                 utm::State::CmpStRead => "reading next state bit from current rule",
                 utm::State::CmpStC0 => "carrying state bit 0 from rule; scanning right toward state section",
-                utm::State::CmpStC0Sk1 => "carrying state bit 0; skipping past accept states section",
                 utm::State::CmpStC0Find => "carrying state bit 0; finding next unmarked bit in state section",
                 utm::State::CmpStC1 => "carrying state bit 1 from rule; scanning right toward state section",
-                utm::State::CmpStC1Sk1 => "carrying state bit 1; skipping past accept states section",
                 utm::State::CmpStC1Find => "carrying state bit 1; finding next unmarked bit in state section",
                 utm::State::CmpStOk => "state bit matched; seeking back to rule's star marker",
                 utm::State::CmpStNextbit => "at star marker; advancing to next state bit in rule",
@@ -136,7 +167,6 @@ fn main() {
                 utm::State::StmGoLeft => "going left past state bits to reach pipe delimiter",
                 utm::State::StmRestoreRule => "restoring marked state bits in rule back to 0/1",
                 utm::State::StmGotoState => "scanning right past rules to reach state section",
-                utm::State::StmGsSk1 => "state match cleanup; skipping past accept states to reach state section",
                 utm::State::StmRestoreState => "state match cleanup; restoring marked state section bits back to 0/1",
                 utm::State::StmBackToRule => "state restored; seeking star marker to begin symbol comparison",
 
@@ -152,16 +182,12 @@ fn main() {
                 utm::State::CmpSymRead => "reading next symbol bit from current rule",
                 utm::State::CmpSymC0 => "carrying symbol bit 0 from rule; scanning right past rules",
                 utm::State::CmpSymC0S1 => "carrying symbol bit 0; skipping past accept states",
-                utm::State::CmpSymC0S2 => "carrying symbol bit 0; skipping past state section",
-                utm::State::CmpSymC0S3 => "carrying symbol bit 0; skipping past blank section",
-                utm::State::CmpSymC0Fh => "carrying symbol bit 0; finding head marker in tape",
                 utm::State::CmpSymC0Fb => "carrying symbol bit 0; finding next unmarked bit in head cell",
+                utm::State::CmpSymC0Fh => "carrying symbol bit 0; finding head marker in tape",
                 utm::State::CmpSymC1 => "carrying symbol bit 1 from rule; scanning right past rules",
                 utm::State::CmpSymC1S1 => "carrying symbol bit 1; skipping past accept states",
-                utm::State::CmpSymC1S2 => "carrying symbol bit 1; skipping past state section",
-                utm::State::CmpSymC1S3 => "carrying symbol bit 1; skipping past blank section",
-                utm::State::CmpSymC1Fh => "carrying symbol bit 1; finding head marker in tape",
                 utm::State::CmpSymC1Fb => "carrying symbol bit 1; finding next unmarked bit in head cell",
+                utm::State::CmpSymC1Fh => "carrying symbol bit 1; finding head marker in tape",
                 utm::State::CmpSymOk => "symbol bit matched; seeking back to rule's star marker",
                 utm::State::CmpSymNextbit => "at star marker; advancing past state bits to next symbol bit",
                 utm::State::CmpSymNb2 => "past state field pipe; finding next unmarked symbol bit in rule",
@@ -177,9 +203,7 @@ fn main() {
 
                 // Symbol Match Cleanup
                 utm::State::SymMatchCleanup => "rule fully matched! scanning right to restore marks before applying",
-                utm::State::SmcS1 => "match cleanup; skipping past accept states section",
-                utm::State::SmcS2 => "match cleanup; skipping past state section",
-                utm::State::SmcS3 => "match cleanup; skipping past blank section",
+                utm::State::SmcS1 => "match cleanup; skipping past state section",
                 utm::State::SmcFh => "match cleanup; finding head marker in tape",
                 utm::State::SmcRestHead => "match cleanup; restoring marked head cell bits back to 0/1",
                 utm::State::SmcRestDone => "head cell restored; seeking star marker in rule",
@@ -189,10 +213,8 @@ fn main() {
                 // Phase 4: Copy New State
                 utm::State::ApplyReadNst => "reading next new-state bit from matched rule",
                 utm::State::CpNstC0 => "carrying new-state bit 0; scanning right toward state section",
-                utm::State::CpNstC0S1 => "carrying new-state bit 0; skipping past accept states",
                 utm::State::CpNstC0W => "carrying new-state bit 0; writing it into state section",
                 utm::State::CpNstC1 => "carrying new-state bit 1; scanning right toward state section",
-                utm::State::CpNstC1S1 => "carrying new-state bit 1; skipping past accept states",
                 utm::State::CpNstC1W => "carrying new-state bit 1; writing it into state section",
                 utm::State::CpNstRet => "new-state bit written; seeking back to star marker for next bit",
                 utm::State::CpNstNext => "copy new state; at star, skipping past state bits in rule",
@@ -200,7 +222,6 @@ fn main() {
                 utm::State::CpNstNext3 => "finding next unmarked new-state bit to copy",
                 utm::State::CpNstDone => "all new-state bits copied; restoring marks in new-state field",
                 utm::State::CpNstRestNav => "copy new state; navigating right to restore accept/state marks",
-                utm::State::CpNstRestS1 => "copy new state; skipping past accept states to reach state section",
                 utm::State::CpNstRestDo => "copy new state; restoring remaining marks in state section",
 
                 // Phase 5: Copy New Symbol
@@ -260,6 +281,7 @@ fn main() {
                 utm::State::MrExtH1 => "extending tape; skipping past rules section",
                 utm::State::MrExtH2 => "extending tape; skipping past accept states",
                 utm::State::MrExtH3 => "extending tape; skipping past state section to reach blank definition",
+                utm::State::MrExtNavToHead => "extending tape; navigating right to find head marker",
                 utm::State::MrExtReadBlank => "extending tape; reading next blank symbol bit to copy",
                 utm::State::MrExtBc0 => "extending tape; carrying blank bit 0 to new cell",
                 utm::State::MrExtBc1 => "extending tape; carrying blank bit 1 to new cell",
@@ -278,15 +300,22 @@ fn main() {
                 utm::State::MlRestore => "move left; restoring old head position as comma separator",
 
                 // Phase 7: Seek Home
-                utm::State::DoneSeekHome => "head moved; seeking $ to restart simulation cycle",
+                utm::State::DoneSeekHome => "seeking back to end of rules section to restart simulation cycle",
+                utm::State::DoneSeekHomeThroughState => "seeking back to end of rules section to restart simulation cycle (through state",
 
                 // Phase 8: Check Accept States
                 utm::State::ChkAccInit => "no rule matched; beginning to check if current state is accepting",
                 utm::State::ChkAccC0 => "checking accept; carrying bit 0 from accept entry toward state section",
                 utm::State::ChkAccC0Find => "checking accept; carrying bit 0, finding next unmarked state bit",
+                utm::State::ChkAccC0Sk1 => "checking accept; carrying bit 0, skipping blank section",
+                utm::State::ChkAccC0Sk2 => "checking accept; carrying bit 0, skipping rules section",
                 utm::State::ChkAccC1 => "checking accept; carrying bit 1 from accept entry toward state section",
                 utm::State::ChkAccC1Find => "checking accept; carrying bit 1, finding next unmarked state bit",
+                utm::State::ChkAccC1Sk1 => "checking accept; carrying bit 1, skipping blank section",
+                utm::State::ChkAccC1Sk2 => "checking accept; carrying bit 1, skipping rules section",
                 utm::State::ChkAccOk => "accept check bit matched; going back for next bit",
+                utm::State::ChkAccOkSk1 => "accept check; skipping left through rules to reach accept section",
+                utm::State::ChkAccOkSk2 => "accept check; skipping left through blank to reach accept section",
                 utm::State::ChkAccOkAcc => "accept check bit matched; scanning left through accept section",
                 utm::State::ChkAccOkFind => "accept check; finding next marked bit in accept entry",
                 utm::State::ChkAccOkSkip => "accept check; skipping past already-matched bits",
@@ -301,14 +330,25 @@ fn main() {
                 // Accept
                 utm::State::AcceptSeekHome => "state is accepting! restoring marks and seeking home",
                 utm::State::AccRestAcc => "accepting; restoring accept states section marks to 0/1",
+                utm::State::AccRestSkip1 => "accepting; skipping blank section to reach state",
+                utm::State::AccRestSkip2 => "accepting; skipping rules section to reach state",
                 utm::State::AccRestState => "accepting; restoring state section marks to 0/1",
                 utm::State::AccFinalHome => "accepting; seeking $ to enter final accept state",
 
                 // Reject
                 utm::State::RejectSeekHome => "state is not accepting; restoring marks and seeking home",
                 utm::State::RejRestAcc => "rejecting; restoring accept states section marks to 0/1",
+                utm::State::RejRestSkip1 => "rejecting; skipping blank section to reach state",
+                utm::State::RejRestSkip2 => "rejecting; skipping rules section to reach state",
                 utm::State::RejRestState => "rejecting; restoring state section marks to 0/1",
                 utm::State::RejFinalHome => "rejecting; seeking $ to enter final reject state",
+
+                // Noop compact rule handling
+                utm::State::NpNextbit => "noop rule; at caret marker, skipping marked bits to read next symbol bit",
+                utm::State::NpMatchPre => "noop rule matched; scanning left to caret to restore before cleanup",
+                utm::State::NpSmcHandler => "noop rule; restoring marks and skipping to direction after match",
+                utm::State::NpReadDir => "noop rule; reading direction L/R",
+                utm::State::NpSymfRestore => "noop rule mismatch; restoring current alternative, trying next",
             }.to_string(),
             |s| format!("{:?}", s),
             |s| match s {
@@ -332,5 +372,115 @@ fn main() {
         ),
     ];
 
-    println!("{}", serde_json::to_string_pretty(&specs).unwrap());
+    // Build welcome modal example tapes
+    // bitFlipperInput: the flip-bits machine's own initial tape (display symbols)
+    let flip_bits_tape = {
+        use FlipBitsSymbol::*;
+        vec![Zero, One, Zero, One, Zero, One]
+    };
+    let bit_flipper_input: Vec<String> = flip_bits_tape
+        .iter()
+        .map(|s| {
+            match s {
+                FlipBitsSymbol::Blank => "_",
+                FlipBitsSymbol::Zero => "0",
+                FlipBitsSymbol::One => "1",
+            }
+            .to_string()
+        })
+        .collect();
+
+    // utmInput: UTM tape encoding the flip-bits machine (L1)
+    let utm_input: Vec<String> = {
+        let mut guest = RunningTuringMachine::new(&*FLIP_BITS_SPEC);
+        guest.tape = flip_bits_tape.clone();
+        utm_spec
+            .encoder(guest.spec)
+            .encode(&guest)
+            .iter()
+            .map(|s| utm_symbol_to_string(*s))
+            .collect()
+    };
+
+    // doubleUtmInput: UTM tape encoding UTM-simulating-flip-bits (L2)
+    let double_utm_input: Vec<String> = {
+        let mut guest = RunningTuringMachine::new(&*FLIP_BITS_SPEC);
+        guest.tape = flip_bits_tape;
+        let l1_tape = utm_spec.encoder(guest.spec).encode(&guest);
+        let mut l1_tm = RunningTuringMachine::new(&utm_spec);
+        l1_tm.tape = l1_tape;
+        make_my_utm_self_optimization_hints(&utm_spec)
+            .encode(&l1_tm)
+            .iter()
+            .map(|s| utm_symbol_to_string(*s))
+            .collect()
+    };
+
+    // Reuse the flip bits and UTM specs already in `specs` for the welcome modal
+    let bit_flipper_idx = specs.iter().position(|s| s.name == "Flip Bits").unwrap();
+    let utm_idx = specs
+        .iter()
+        .position(|s| s.name == "Universal Turing Machine")
+        .unwrap();
+
+    // We need owned copies for the welcome modal example
+    let bit_flipper_spec = export_spec(
+        &*FLIP_BITS_SPEC,
+        "Flip Bits",
+        "Flips 0s to 1s and vice versa, then halts at blank.",
+        |s| format!("{:?}", s),
+        |s| format!("{:?}", s),
+        |s| format!("{:?}", s),
+        |s| match s {
+            FlipBitsSymbol::Blank => '_',
+            FlipBitsSymbol::Zero => '0',
+            FlipBitsSymbol::One => '1',
+        },
+    );
+
+    // For the UTM spec in welcome modal, reuse the same export logic
+    let utm_spec_export = export_spec(
+        &utm_spec,
+        "Universal Turing Machine",
+        "A universal Turing machine that can simulate any other TM given an encoded description on its tape.",
+        |s| format!("{:?}", s),
+        |s| match s {
+            utm::State::Accept => "accepted!".to_string(),
+            _ => format!("{:?}", s),
+        },
+        |s| format!("{:?}", s),
+        |s| match s {
+            utm::Symbol::Blank => '_',
+            utm::Symbol::Zero => '0',
+            utm::Symbol::One => '1',
+            utm::Symbol::X => 'X',
+            utm::Symbol::Y => 'Y',
+            utm::Symbol::Hash => '#',
+            utm::Symbol::Pipe => '|',
+            utm::Symbol::Semi => ';',
+            utm::Symbol::Comma => ',',
+            utm::Symbol::Caret => '^',
+            utm::Symbol::L => 'L',
+            utm::Symbol::R => 'R',
+            utm::Symbol::Dot => '.',
+            utm::Symbol::Star => '*',
+            utm::Symbol::Gt => '>',
+            utm::Symbol::Dollar => '$',
+        },
+    );
+
+    let _ = (bit_flipper_idx, utm_idx); // suppress unused warnings
+
+    let export = RustExport {
+        machine_specs: specs,
+        welcome_modal_example: WelcomeModalExample {
+            bit_flipper_spec,
+            utm_spec: utm_spec_export,
+            bit_flipper_input,
+            utm_input,
+            double_utm_input,
+        },
+    };
+
+    println!("{}", serde_json::to_string(&export).unwrap());
 }

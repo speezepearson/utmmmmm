@@ -53,12 +53,6 @@ export function TuringMachineViewer({
       {showGraph && (
         <TMStateGraph spec={snapshot.spec} state={snapshot.state} />
       )}
-
-      {halted && (
-        <div className={`tm-result tm-result-${status}`}>
-          {status.toUpperCase()}
-        </div>
-      )}
     </div>
   );
 }

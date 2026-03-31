@@ -1,12 +1,12 @@
-use crate::compiled::{CState, CompiledTuringMachineSpec};
+use crate::compiled::CompiledTuringMachineSpec;
+use crate::gen_utm::{Encoder, UtmSpec as _};
 use crate::tm::{step, RunningTMStatus, RunningTuringMachine, SimpleTuringMachineSpec};
-use crate::utm::UTM_SPEC;
-use crate::utm::{MyUtmEncodingScheme, State, Symbol, UtmEncodingScheme};
+use crate::utm::{MyUtmSpec, MyUtmSpecOptimizationHints};
+use crate::utm::{State, Symbol};
 use std::cmp::max;
 
-pub type UtmTm<'a> = RunningTuringMachine<'a, SimpleTuringMachineSpec<State, Symbol>>;
-pub type CompiledUtmSpec<'a> =
-    CompiledTuringMachineSpec<'a, SimpleTuringMachineSpec<State, Symbol>>;
+pub type UtmTm<'a> = RunningTuringMachine<'a, MyUtmSpec>;
+pub type CompiledUtmSpec<'a> = CompiledTuringMachineSpec<'a, MyUtmSpec>;
 
 #[derive(Clone)]
 pub struct TowerLevel<TM> {
@@ -19,22 +19,24 @@ pub type UtmTowerLevel<'a> =
     TowerLevel<RunningTuringMachine<'a, SimpleTuringMachineSpec<State, Symbol>>>;
 
 pub struct Tower<'a> {
+    pub encoder: &'a MyUtmSpecOptimizationHints<'a, MyUtmSpec>,
     pub base: CompiledTowerLevel<'a>,
     pub decoded: Vec<UtmTowerLevel<'a>>,
-    pub clean_compiled_state: CState,
 }
 
 impl<'a> Tower<'a> {
-    pub fn new(tm: RunningTuringMachine<'a, CompiledUtmSpec<'a>>) -> Self {
-        let clean_compiled_state = tm.spec.compile_state(State::Init);
+    pub fn new(
+        encoder: &'a MyUtmSpecOptimizationHints<'a, MyUtmSpec>,
+        tm: RunningTuringMachine<'a, CompiledUtmSpec<'a>>,
+    ) -> Self {
         Self {
+            encoder,
             base: TowerLevel {
                 tm,
                 total_steps: 0,
                 max_head_pos: 0,
             },
             decoded: Vec::new(),
-            clean_compiled_state,
         }
     }
 
@@ -45,7 +47,12 @@ impl<'a> Tower<'a> {
         self.base.max_head_pos = max(self.base.max_head_pos, self.base.tm.pos);
         // eprintln!("step: {:?}", res);
 
-        if self.base.tm.state == prev_state || self.base.tm.state != self.clean_compiled_state {
+        if !self
+            .base
+            .tm
+            .spec
+            .is_tick_boundary(prev_state, self.base.tm.state)
+        {
             // We didn't just transition into the clean state, so decoding isn't well-defined.
             return res;
         }
@@ -55,7 +62,7 @@ impl<'a> Tower<'a> {
         let mut cur = &base_decompiled;
         let mut decoding = self.decoded.as_mut_slice();
         while let Some((next, rest)) = decoding.split_first_mut() {
-            if !decode_into_level(cur, next) {
+            if !decode_into_level(self.encoder, &cur, next) {
                 // next level didn't enter Init, so we're done
                 return res;
             }
@@ -63,11 +70,14 @@ impl<'a> Tower<'a> {
         }
 
         // we ran into the end of self.decoded, so we need to add a new level
-        let new_level = TowerLevel {
-            total_steps: 0,
-            max_head_pos: 0,
-            tm: MyUtmEncodingScheme::decode(&*UTM_SPEC, &cur.tape)
-                .expect("it should always be okay to decode a utm that just entered Init"),
+        let new_tm = self
+            .encoder
+            .decode(&cur.tape)
+            .expect("it should always be okay to decode a utm that just hit a tick boundary");
+        let new_level: TowerLevel<UtmTm<'a>> = TowerLevel {
+            total_steps: 1,
+            max_head_pos: new_tm.pos,
+            tm: new_tm,
         };
         self.decoded.push(new_level);
 
@@ -75,14 +85,19 @@ impl<'a> Tower<'a> {
     }
 }
 
-fn decode_into_level<'a>(tm: &UtmTm<'a>, dst: &mut UtmTowerLevel<'a>) -> bool {
-    let decoded = MyUtmEncodingScheme::decode(&*UTM_SPEC, &tm.tape)
-        .expect("it should always be okay to decode a utm that just entered Init");
+fn decode_into_level<'a>(
+    encoder: &'a MyUtmSpecOptimizationHints<'a, MyUtmSpec>,
+    tm: &'_ UtmTm<'_>,
+    dst: &'_ mut UtmTowerLevel<'a>,
+) -> bool {
+    let decoded = encoder
+        .decode(&tm.tape)
+        .expect("it should always be okay to decode a utm that just hit a tick boundary");
     let old_state = dst.tm.state;
     let new_state = decoded.state;
     dst.total_steps += 1;
     dst.max_head_pos = max(dst.max_head_pos, decoded.pos);
     dst.tm = decoded;
 
-    return new_state != old_state && new_state == State::Init;
+    return encoder.guest.is_tick_boundary(old_state, new_state);
 }

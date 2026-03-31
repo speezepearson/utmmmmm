@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { TuringMachineViewer } from "./TuringMachineViewer";
 import { machineSpecs } from "./parseSpec";
-import { TapeInput, useTapeInput } from "./TapeInput";
+import { TapeInput } from "./TapeInput";
+import { useTapeInput } from "./useTapeInput";
 
 export function MachineExplorer() {
   const [selectedIdx, setSelectedIdx] = useState(0);

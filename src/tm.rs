@@ -1,18 +1,18 @@
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     hash::Hash,
 };
 
 // ── Direction ──
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Dir {
     Left,
     Right,
 }
 
 pub trait TuringMachineSpec {
-    type State: Copy + PartialEq + Eq + Hash;
-    type Symbol: Copy + PartialEq + Eq + Hash;
+    type State: Copy + PartialEq + Eq + Hash + Ord;
+    type Symbol: Copy + PartialEq + Eq + Hash + Ord;
     fn initial(&self) -> Self::State;
     fn blank(&self) -> Self::Symbol;
     fn is_accepting(&self, state: Self::State) -> bool;
@@ -31,19 +31,19 @@ pub trait TuringMachineSpec {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SimpleTuringMachineSpec<
-    State: Copy + PartialEq + Eq + Hash,
-    Symbol: Copy + PartialEq + Eq + Hash,
+    State: Copy + PartialEq + Eq + Hash + Ord,
+    Symbol: Copy + PartialEq + Eq + Hash + Ord,
 > {
     pub initial: State,
-    pub accepting: HashSet<State>,
+    pub accepting: BTreeSet<State>,
     pub blank: Symbol,
-    pub transitions: HashMap<(State, Symbol), (State, Symbol, Dir)>,
+    pub transitions: BTreeMap<(State, Symbol), (State, Symbol, Dir)>,
     pub all_states: Vec<State>,
     pub all_symbols: Vec<Symbol>,
 }
 
-impl<State: Copy + PartialEq + Eq + Hash, Symbol: Copy + PartialEq + Eq + Hash> TuringMachineSpec
-    for SimpleTuringMachineSpec<State, Symbol>
+impl<State: Copy + PartialEq + Eq + Hash + Ord, Symbol: Copy + PartialEq + Eq + Hash + Ord>
+    TuringMachineSpec for SimpleTuringMachineSpec<State, Symbol>
 {
     type State = State;
     type Symbol = Symbol;

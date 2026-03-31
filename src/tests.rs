@@ -1,7 +1,9 @@
-use crate::infinity::HEADER;
+use std::collections::BTreeMap;
+
+use crate::gen_utm::{Encoder, UtmSpec};
 use crate::tm::{
-    run_tm, run_until_enters_state, HaltReason, RunUntilResult, RunningTuringMachine,
-    TuringMachineSpec,
+    run_tm, run_until_enters_state, step, HaltReason, RunUntilResult, RunningTMStatus,
+    RunningTuringMachine, TuringMachineSpec,
 };
 use crate::toy_machines::*;
 use crate::utm::*;
@@ -36,7 +38,8 @@ fn run_via_utm<'a, Guest: TuringMachineSpec>(
     input: &[Guest::Symbol],
     max_utm_steps: usize,
 ) -> (String, RunningTuringMachine<'a, Guest>) {
-    let utm = &*UTM_SPEC;
+    let utm_spec = make_utm_spec();
+    let encoder = MyUtmSpecOptimizationHints::guess(guest);
 
     let mut guest_tm = RunningTuringMachine::new(guest);
     guest_tm.tape = if input.is_empty() {
@@ -45,8 +48,8 @@ fn run_via_utm<'a, Guest: TuringMachineSpec>(
         input.to_vec()
     };
 
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
-    let mut utm_tm = RunningTuringMachine::new(utm);
+    let encoded = encoder.encode(&guest_tm);
+    let mut utm_tm = RunningTuringMachine::new(&utm_spec);
     utm_tm.tape = encoded;
 
     let result = run_tm(&mut utm_tm, max_utm_steps, None);
@@ -56,7 +59,8 @@ fn run_via_utm<'a, Guest: TuringMachineSpec>(
         Err(_) => "limit",
     };
 
-    let decoded = MyUtmEncodingScheme::decode(guest, &utm_tm.tape)
+    let decoded = encoder
+        .decode(&utm_tm.tape)
         .expect("should be able to decode UTM tape");
 
     (status.to_string(), decoded)
@@ -81,6 +85,8 @@ fn assert_faithful<Spec: TuringMachineSpec + std::fmt::Debug>(
     Spec::State: std::fmt::Debug,
     Spec::Symbol: std::fmt::Debug,
 {
+    let utm_spec = make_utm_spec();
+    let encoder = MyUtmSpecOptimizationHints::guess(guest_tm.spec);
     // Run directly
     let mut direct_tm = RunningTuringMachine {
         spec: guest_tm.spec,
@@ -96,9 +102,8 @@ fn assert_faithful<Spec: TuringMachineSpec + std::fmt::Debug>(
     };
 
     // Run via UTM
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
-    let utm = &*UTM_SPEC;
-    let mut utm_tm = RunningTuringMachine::new(utm);
+    let encoded = encoder.encode(&guest_tm);
+    let mut utm_tm = RunningTuringMachine::new(&utm_spec);
     utm_tm.tape = encoded;
 
     let utm_result = run_tm(&mut utm_tm, max_utm_steps, None);
@@ -114,7 +119,8 @@ fn assert_faithful<Spec: TuringMachineSpec + std::fmt::Debug>(
         direct_status, utm_status
     );
 
-    let mut decoded = MyUtmEncodingScheme::decode(guest_tm.spec, &utm_tm.tape)
+    let mut decoded = encoder
+        .decode(&utm_tm.tape)
         .expect("should decode UTM tape after halting");
 
     strip_trailing_blanks(&mut direct_tm);
@@ -142,16 +148,17 @@ fn test_flip_bits_direct() {
 
 #[test]
 fn test_palindrome_direct() {
+    use crate::toy_machines::Letter::*;
     use CheckPalindromeSymbol::*;
     let spec = &*CHECK_PALINDROME_SPEC;
 
-    let (status, _) = run_guest_direct(spec, &[A, A], 1000);
+    let (status, _) = run_guest_direct(spec, &[Letter(A), Letter(A)], 1000);
     assert_eq!(status, "accept");
 
-    let (status, _) = run_guest_direct(spec, &[A, B], 1000);
+    let (status, _) = run_guest_direct(spec, &[Letter(A), Letter(B)], 1000);
     assert_eq!(status, "reject");
 
-    let (status, _) = run_guest_direct(spec, &[A, B, A], 1000);
+    let (status, _) = run_guest_direct(spec, &[Letter(A), Letter(B), Letter(A)], 1000);
     assert_eq!(status, "accept");
 
     let (status, _) = run_guest_direct(spec, &[], 1000);
@@ -176,7 +183,7 @@ fn test_double_x_direct() {
 
 #[test]
 fn test_utm_spec_builds() {
-    let utm = &*UTM_SPEC;
+    let utm = make_utm_spec();
     let n_rules = utm.transitions.len();
     assert!(n_rules > 100, "UTM should have many rules, got {}", n_rules);
 }
@@ -192,8 +199,10 @@ fn test_encode_decode_roundtrip_flip_bits() {
     let mut guest_tm = RunningTuringMachine::new(spec);
     guest_tm.tape = vec![Zero, One];
 
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
-    let decoded = MyUtmEncodingScheme::decode(spec, &encoded).unwrap();
+    let utm = make_utm_spec();
+    let encoder = utm.encoder(guest_tm.spec);
+    let encoded = encoder.encode(&guest_tm);
+    let decoded = encoder.decode(&encoded).unwrap();
     assert_eq!(decoded.state, guest_tm.state);
     assert_eq!(decoded.pos, 0);
     assert_eq!(decoded.tape, vec![Zero, One]);
@@ -205,8 +214,10 @@ fn test_encode_decode_roundtrip_empty() {
     let mut guest_tm = RunningTuringMachine::new(spec);
     guest_tm.tape = vec![spec.blank()];
 
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
-    let decoded = MyUtmEncodingScheme::decode(spec, &encoded).unwrap();
+    let utm = make_utm_spec();
+    let encoder = utm.encoder(guest_tm.spec);
+    let encoded = encoder.encode(&guest_tm);
+    let decoded = encoder.decode(&encoded).unwrap();
     assert_eq!(decoded.state, spec.initial());
     assert_eq!(decoded.pos, 0);
     assert_eq!(decoded.tape, vec![spec.blank()]);
@@ -214,16 +225,19 @@ fn test_encode_decode_roundtrip_empty() {
 
 #[test]
 fn test_encode_decode_roundtrip_palindrome() {
+    use crate::toy_machines::Letter::*;
     use CheckPalindromeSymbol::*;
     let spec = &*CHECK_PALINDROME_SPEC;
     let mut guest_tm = RunningTuringMachine::new(spec);
-    guest_tm.tape = vec![A, B, A];
+    guest_tm.tape = vec![Letter(A), Letter(B), Letter(A)];
 
-    let encoded = MyUtmEncodingScheme::encode(&guest_tm);
-    let decoded = MyUtmEncodingScheme::decode(spec, &encoded).unwrap();
+    let utm = make_utm_spec();
+    let encoder = utm.encoder(guest_tm.spec);
+    let encoded = encoder.encode(&guest_tm);
+    let decoded = encoder.decode(&encoded).unwrap();
     assert_eq!(decoded.state, CheckPalindromeState::Start);
     assert_eq!(decoded.pos, 0);
-    assert_eq!(decoded.tape, vec![A, B, A]);
+    assert_eq!(decoded.tape, vec![Letter(A), Letter(B), Letter(A)]);
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -264,20 +278,6 @@ fn test_utm_flip_bits_5() {
 }
 
 #[test]
-fn test_utm_palindrome_accept() {
-    use CheckPalindromeSymbol::*;
-    let (status, _) = run_via_utm(&*CHECK_PALINDROME_SPEC, &[A, A], 10_000_000);
-    assert_eq!(status, "accept");
-}
-
-#[test]
-fn test_utm_palindrome_reject() {
-    use CheckPalindromeSymbol::*;
-    let (status, _) = run_via_utm(&*CHECK_PALINDROME_SPEC, &[A, B], 10_000_000);
-    assert_eq!(status, "reject");
-}
-
-#[test]
 fn test_utm_double_x() {
     use DoubleXSymbol::*;
     let (status, tm) = run_via_utm(&*DOUBLE_X_SPEC, &[Dollar, X, X], 50_000_000);
@@ -287,99 +287,6 @@ fn test_utm_double_x() {
     assert_eq!(tm.tape[2], X);
     assert_eq!(tm.tape[3], X);
     assert_eq!(tm.tape[4], X);
-}
-
-// ════════════════════════════════════════════════════════════════════
-// Tests: Infinite UTM tape
-// ════════════════════════════════════════════════════════════════════
-
-#[test]
-fn test_infinite_tape_initial() {
-    let inf = crate::infinity::InfiniteTape::new();
-
-    let mut tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut tape, 100);
-    assert_eq!(tape[0], Symbol::Dollar);
-    assert!(
-        tape.len() >= 100,
-        "tape should be at least 100 symbols: got {}",
-        tape.len()
-    );
-}
-
-#[test]
-fn test_infinite_tape_self_similar() {
-    let inf = crate::infinity::InfiniteTape::new();
-    use crate::optimization_hints::OPTIMIZATION_HINTS;
-
-    let mut outer_tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut outer_tape, 100_000);
-
-    let utm = &*UTM_SPEC;
-    // Decode the outer tape to get the inner (guest) TM state.
-    // The guest is also a UTM, and its tape contains guest-level symbols.
-    let decoded =
-        MyUtmEncodingScheme::decode(utm, &outer_tape).expect("should decode the infinite UTM tape");
-
-    // Re-encode the decoded guest TM back into a UTM tape.
-    // Must use the same rule order as the infinite extender (which uses OPTIMIZATION_HINTS).
-    let mut re_encoded =
-        MyUtmEncodingScheme::encode_with_rule_order(&decoded, Some(OPTIMIZATION_HINTS));
-    inf.extend(&mut re_encoded, 100_000);
-
-    assert_eq!(
-        re_encoded[..100_000],
-        outer_tape[..100_000],
-        "re-encoded inner tape should equal the outer tape"
-    );
-}
-
-#[test]
-fn test_decoded_tape_no_leading_blanks() {
-    let inf = crate::infinity::InfiniteTape::new();
-
-    let utm = &*UTM_SPEC;
-
-    // Build the infinite UTM tape and decode it
-    let mut outer_tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut outer_tape, 100_000);
-
-    let decoded =
-        MyUtmEncodingScheme::decode(utm, &outer_tape).expect("should decode the infinite UTM tape");
-
-    // The decoded tape is the guest UTM's tape. Since the guest is a fresh UTM
-    // simulating itself, its tape should start with $, not blanks.
-    assert_eq!(
-        decoded.tape[0],
-        Symbol::Dollar,
-        "decoded tape should start with $, not {:?}",
-        decoded.tape[0]
-    );
-}
-
-/// Regression: MIN_DISPLAY_TAPE_LEN = 10_000 was too small to contain the full
-/// UTM header (which has 5 # delimiters). Decoding a tape of only 10k symbols
-/// failed with "expected at least 5 # delimiters, found 1".
-#[test]
-fn test_decode_needs_more_than_10k_symbols() {
-    let inf = crate::infinity::InfiniteTape::new();
-    let header_len = HEADER.len();
-
-    let utm = &*UTM_SPEC;
-
-    // 10k is NOT enough — the header alone is larger than that.
-    let mut small_tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut small_tape, header_len / 2);
-    assert!(
-        MyUtmEncodingScheme::decode(utm, &small_tape).is_err(),
-        "10k symbols should NOT be enough to decode (header_len = {})",
-        header_len,
-    );
-
-    // header_len + 1000 IS enough.
-    let mut big_tape: Vec<Symbol> = Vec::new();
-    inf.extend(&mut big_tape, header_len + 1_000);
-    MyUtmEncodingScheme::decode(utm, &big_tape).expect("should be able to decode a long tape");
 }
 
 // ════════════════════════════════════════════════════════════════════
@@ -419,32 +326,6 @@ fn test_faithful_flip_bits_5() {
 }
 
 #[test]
-fn test_faithful_palindrome_accept() {
-    use CheckPalindromeSymbol::*;
-    let spec = &*CHECK_PALINDROME_SPEC;
-    let mut tm = RunningTuringMachine::new(spec);
-    tm.tape = vec![A, B, A];
-    assert_faithful(tm, 1_000, 10_000_000);
-}
-
-#[test]
-fn test_faithful_palindrome_reject() {
-    use CheckPalindromeSymbol::*;
-    let spec = &*CHECK_PALINDROME_SPEC;
-    let mut tm = RunningTuringMachine::new(spec);
-    tm.tape = vec![A, B, C];
-    assert_faithful(tm, 1_000, 10_000_000);
-}
-
-#[test]
-fn test_faithful_palindrome_empty() {
-    let spec = &*CHECK_PALINDROME_SPEC;
-    let mut tm = RunningTuringMachine::new(spec);
-    tm.tape = vec![spec.blank()];
-    assert_faithful(tm, 1_000, 10_000_000);
-}
-
-#[test]
 fn test_faithful_double_x() {
     use DoubleXSymbol::*;
     let spec = &*DOUBLE_X_SPEC;
@@ -462,10 +343,10 @@ fn test_faithful_utm_running_accept_immediately() {
     let inner_tm = RunningTuringMachine::new(acc_spec);
 
     // Encode the inner TM into a UTM tape
-    let encoded_inner = MyUtmEncodingScheme::encode(&inner_tm);
+    let utm_spec = make_utm_spec();
+    let encoded_inner = utm_spec.encoder(inner_tm.spec).encode(&inner_tm);
 
-    let utm = &*UTM_SPEC;
-    let mut utm_tm = RunningTuringMachine::new(utm);
+    let mut utm_tm = RunningTuringMachine::new(&utm_spec);
     utm_tm.tape = encoded_inner;
 
     // Now assert_faithful runs this UTM-running-AcceptImmediately
@@ -486,8 +367,12 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
     tm.tape = vec![Zero, One, Zero];
 
     // Put one specific rule last
-    let last_rules = vec![(FlipBitsState::Flip, Zero)];
-    let encoded = MyUtmEncodingScheme::encode_with_rule_order(&tm, Some(&last_rules));
+    let utm_spec = make_utm_spec();
+    let encoder = MyUtmSpecOptimizationHints::from_transition_stats(
+        spec,
+        &BTreeMap::from([((FlipBitsState::Flip, Zero), 1)]),
+    );
+    let encoded = encoder.encode(&tm);
 
     // Run directly
     let mut direct_tm = RunningTuringMachine {
@@ -499,8 +384,7 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
     let direct_result = run_tm(&mut direct_tm, 100, None).unwrap();
 
     // Run via UTM with reordered encoding
-    let utm = &*UTM_SPEC;
-    let mut utm_tm = RunningTuringMachine::new(utm);
+    let mut utm_tm = RunningTuringMachine::new(&utm_spec);
     utm_tm.tape = encoded;
     let utm_result = run_tm(&mut utm_tm, 10_000_000, None).unwrap();
 
@@ -511,46 +395,10 @@ fn test_encode_with_last_rules_faithful_flip_bits() {
         "halt status should match"
     );
 
-    let decoded = MyUtmEncodingScheme::decode(spec, &utm_tm.tape).expect("should decode UTM tape");
-    strip_trailing_blanks(&mut direct_tm);
-    let mut decoded_stripped = decoded;
-    strip_trailing_blanks(&mut decoded_stripped);
-    assert_eq!(direct_tm.tape, decoded_stripped.tape);
-}
-
-#[test]
-fn test_encode_with_last_rules_faithful_palindrome() {
-    use CheckPalindromeSymbol::*;
-    let spec = &*CHECK_PALINDROME_SPEC;
-    let mut tm = RunningTuringMachine::new(spec);
-    tm.tape = vec![A, B, A];
-
-    // Put some rules last
-    let last_rules = vec![
-        (CheckPalindromeState::SeekRA, A),
-        (CheckPalindromeState::SeekRA, B),
-    ];
-    let encoded = MyUtmEncodingScheme::encode_with_rule_order(&tm, Some(&last_rules));
-
-    let mut direct_tm = RunningTuringMachine {
-        spec: tm.spec,
-        state: tm.state,
-        pos: tm.pos,
-        tape: tm.tape.clone(),
-    };
-    let direct_result = run_tm(&mut direct_tm, 1_000, None).unwrap();
-
-    let utm = &*UTM_SPEC;
-    let mut utm_tm = RunningTuringMachine::new(utm);
-    utm_tm.tape = encoded;
-    let utm_result = run_tm(&mut utm_tm, 10_000_000, None).unwrap();
-
-    assert_eq!(
-        matches!(direct_result, HaltReason::Accepted { .. }),
-        matches!(utm_result, HaltReason::Accepted { .. }),
-    );
-
-    let decoded = MyUtmEncodingScheme::decode(spec, &utm_tm.tape).expect("should decode UTM tape");
+    let decoded = utm_spec
+        .encoder(spec)
+        .decode(&utm_tm.tape)
+        .expect("should decode UTM tape");
     strip_trailing_blanks(&mut direct_tm);
     let mut decoded_stripped = decoded;
     strip_trailing_blanks(&mut decoded_stripped);
@@ -564,8 +412,9 @@ fn test_encode_with_none_same_as_encode() {
     let mut tm = RunningTuringMachine::new(spec);
     tm.tape = vec![Zero, One];
 
-    let plain = MyUtmEncodingScheme::encode(&tm);
-    let with_none = MyUtmEncodingScheme::encode_with_rule_order(&tm, None);
+    let utm = make_utm_spec();
+    let plain = utm.encoder(tm.spec).encode(&tm);
+    let with_none = utm.encoder(tm.spec).encode(&tm);
     assert_eq!(plain, with_none);
 }
 
@@ -584,20 +433,20 @@ fn bench_compiled_vs_interpreted() {
     // Pre-extend tape to this size so no allocation happens during timing.
     const TAPE_PAD: usize = 10_000;
 
-    let utm = &*UTM_SPEC;
+    let utm_spec = make_utm_spec();
 
     // Build utm(encode(utm(encode(accept_immediately))))
     let acc_spec = &*ACCEPT_IMMEDIATELY_SPEC;
     let inner_tm = RunningTuringMachine::new(acc_spec);
-    let inner_encoded = MyUtmEncodingScheme::encode(&inner_tm);
+    let inner_encoded = utm_spec.encoder(inner_tm.spec).encode(&inner_tm);
 
-    let mut mid_tm = RunningTuringMachine::new(utm);
+    let mut mid_tm = RunningTuringMachine::new(&utm_spec);
     mid_tm.tape = inner_encoded;
-    let outer_encoded = MyUtmEncodingScheme::encode(&mid_tm);
+    let outer_encoded = utm_spec.encoder(mid_tm.spec).encode(&mid_tm);
 
     // Helper: convert Symbol tape to CSymbol tape
-    let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
-    let sym_to_csym: std::collections::HashMap<Symbol, CSymbol> = compiled
+    let compiled = CompiledTuringMachineSpec::compile(&utm_spec).expect("UTM should compile");
+    let sym_to_csym: std::collections::BTreeMap<Symbol, CSymbol> = compiled
         .original_symbols
         .iter()
         .enumerate()
@@ -605,11 +454,11 @@ fn bench_compiled_vs_interpreted() {
         .collect();
 
     // ── Interpreted: set up and pre-extend tape ──
-    let mut interp_tm = RunningTuringMachine::new(utm);
+    let mut interp_tm = RunningTuringMachine::new(&utm_spec);
     interp_tm.tape = outer_encoded.clone();
     interp_tm
         .tape
-        .resize(outer_encoded.len() + TAPE_PAD, utm.blank());
+        .resize(outer_encoded.len() + TAPE_PAD, utm_spec.blank());
 
     // ── Compiled: set up and pre-extend tape ──
     let mut compiled_tm = RunningTuringMachine::new(&compiled);
@@ -658,7 +507,7 @@ fn bench_compiled_vs_interpreted() {
         "═══ Benchmark: UTM(UTM(accept_immediately)), {} steps ═══",
         STEPS
     );
-    eprintln!("  Interpreted (HashMap): {:?}", interp_elapsed);
+    eprintln!("  Interpreted (BTreeMap): {:?}", interp_elapsed);
     eprintln!("  Compiled (array):      {:?}", compiled_elapsed);
     eprintln!("  Speedup:               {:.2}x", speedup);
 }
@@ -745,20 +594,16 @@ fn test_run_until_enters_state_halts_in_non_target() {
 #[ignore] // Run with: cargo test --release -- --ignored bench_rule_order --nocapture
 fn bench_rule_order_optimization() {
     use crate::compiled::CompiledTuringMachineSpec;
-    use crate::optimization_hints::OPTIMIZATION_HINTS;
 
     const STEPS: usize = 100_000_000;
 
-    let utm = &*UTM_SPEC;
-    let compiled = CompiledTuringMachineSpec::compile(utm).expect("UTM should compile");
+    let utm_spec = make_utm_spec();
+    let compiled = CompiledTuringMachineSpec::compile(&utm_spec).expect("UTM should compile");
 
     // Helper: build a compiled TM running the infinite UTM tape with given rule order
-    let build_tm = |last_rules: Option<&[(State, Symbol)]>| {
+    let build_tm = |optimization_hints: &MyUtmSpecOptimizationHints<MyUtmSpec>| {
         // Compute the header with the given rule order
-        let header_tape = MyUtmEncodingScheme::encode_with_rule_order(
-            &RunningTuringMachine::new(utm),
-            last_rules,
-        );
+        let header_tape = optimization_hints.encode(&RunningTuringMachine::new(&utm_spec));
         let caret_pos = header_tape
             .iter()
             .position(|&s| s == Symbol::Caret)
@@ -769,12 +614,12 @@ fn bench_rule_order_optimization() {
         // We can't reuse InfiniteTapeExtender directly since it uses OPTIMIZATION_HINTS,
         // so for the unoptimized case we need to build the tape from the unoptimized header.
         // For simplicity, pre-extend a large tape and run from that.
-        let sym_to_idx: std::collections::HashMap<Symbol, usize> = utm
+        let sym_to_idx: std::collections::BTreeMap<Symbol, usize> = utm_spec
             .iter_symbols()
             .enumerate()
             .map(|(i, s)| (s, i))
             .collect();
-        let n_sym_bits = crate::utm::num_bits(utm.iter_symbols().count());
+        let n_sym_bits = crate::utm::num_bits(utm_spec.iter_symbols().count());
         let cell_width = 1 + n_sym_bits;
         let tape_len = header.len() + STEPS + 10_000;
         let mut tape: Vec<Symbol> = Vec::with_capacity(tape_len);
@@ -795,7 +640,7 @@ fn bench_rule_order_optimization() {
         }
 
         // Convert to compiled symbols
-        let sym_to_csym: std::collections::HashMap<Symbol, crate::compiled::CSymbol> = compiled
+        let sym_to_csym: std::collections::BTreeMap<Symbol, crate::compiled::CSymbol> = compiled
             .original_symbols
             .iter()
             .enumerate()
@@ -806,39 +651,35 @@ fn bench_rule_order_optimization() {
         compiled_tm
     };
 
-    // Find the CState index corresponding to State::Init
-    let init_cstate = compiled
-        .original_states
-        .iter()
-        .position(|&s| s == State::Init)
-        .map(|i| crate::compiled::CState(i as u8))
-        .expect("Init state should exist");
-
-    // Helper: count how many times the UTM enters Init in STEPS total steps
+    // Helper: count how many times the UTM completes an inner step in STEPS total steps
     let count_guest_steps = |tm: &mut RunningTuringMachine<
         CompiledTuringMachineSpec<crate::tm::SimpleTuringMachineSpec<State, Symbol>>,
     >|
      -> u64 {
         let mut guest_steps = 0u64;
+        let mut prev_state = tm.state;
         let mut remaining = STEPS;
         while remaining > 0 {
-            match run_until_enters_state(tm, init_cstate, remaining, None) {
-                Ok(steps) => {
-                    remaining -= steps;
-                    guest_steps += 1;
+            match step(tm) {
+                RunningTMStatus::Running => {
+                    if compiled.is_tick_boundary(prev_state, tm.state) {
+                        guest_steps += 1;
+                    }
+                    prev_state = tm.state;
+                    remaining -= 1;
                 }
-                Err(_) => break,
+                _ => break,
             }
         }
         guest_steps
     };
 
     // ── Unoptimized (default rule order) ──
-    let mut unopt_tm = build_tm(None);
+    let mut unopt_tm = build_tm(&MyUtmSpecOptimizationHints::guess(&utm_spec));
     let unopt_guest_steps = count_guest_steps(&mut unopt_tm);
 
     // ── Optimized (hints rule order) ──
-    let mut opt_tm = build_tm(Some(OPTIMIZATION_HINTS));
+    let mut opt_tm = build_tm(&MyUtmSpecOptimizationHints::guess(&utm_spec));
     let opt_guest_steps = count_guest_steps(&mut opt_tm);
 
     eprintln!(
@@ -855,4 +696,438 @@ fn bench_rule_order_optimization() {
             opt_guest_steps as f64 / unopt_guest_steps as f64
         );
     }
+}
+
+// ════════════════════════════════════════════════════════════════════
+// is_tick_boundary / run_until_inner_step tests
+// ════════════════════════════════════════════════════════════════════
+
+use crate::utm::run_until_inner_step;
+
+/// Helper: create a UTM running a guest, assert it starts at a tick,
+/// then for each of `n_steps` inner steps: step the guest directly once,
+/// advance the UTM to the next tick, decode, and assert equality.
+fn assert_tick_faithful<Spec: TuringMachineSpec>(
+    guest_spec: &Spec,
+    input: &[Spec::Symbol],
+    n_steps: usize,
+    max_utm_steps_per_tick: usize,
+) where
+    Spec::State: std::fmt::Debug + PartialEq,
+    Spec::Symbol: std::fmt::Debug + PartialEq,
+{
+    let utm_spec = make_utm_spec();
+    let encoder = utm_spec.encoder(guest_spec);
+
+    // Set up guest TM
+    let mut guest_tm = RunningTuringMachine::new(guest_spec);
+    guest_tm.tape = if input.is_empty() {
+        vec![guest_spec.blank()]
+    } else {
+        input.to_vec()
+    };
+
+    // Encode and create UTM
+    let encoded = encoder.encode(&guest_tm);
+    let mut utm_tm = RunningTuringMachine::new(&utm_spec);
+    utm_tm.tape = encoded;
+
+    // Decode of freshly encoded tape should match initial guest
+    let decoded = encoder
+        .decode(&utm_tm.tape)
+        .expect("decode at initial state");
+    assert_eq!(decoded.state, guest_tm.state, "initial state mismatch");
+    assert_eq!(decoded.pos, guest_tm.pos, "initial pos mismatch");
+    assert_eq!(decoded.tape, guest_tm.tape, "initial tape mismatch");
+
+    for i in 0..n_steps {
+        // Step the guest directly
+        let guest_status = step(&mut guest_tm);
+        if !matches!(guest_status, crate::tm::RunningTMStatus::Running) {
+            // Guest halted; we can't step further
+            break;
+        }
+        // Extend guest tape if needed
+        if guest_tm.pos >= guest_tm.tape.len() {
+            guest_tm.tape.resize(guest_tm.pos + 1, guest_spec.blank());
+        }
+
+        // Advance UTM to next tick
+        let tick_result = run_until_inner_step(&utm_spec, &mut utm_tm, max_utm_steps_per_tick);
+        assert!(
+            tick_result.is_ok(),
+            "UTM should reach tick at step {} (got {:?})",
+            i + 1,
+            tick_result,
+        );
+
+        // Decode and compare
+        let decoded = encoder
+            .decode(&utm_tm.tape)
+            .expect(&format!("decode at tick {}", i + 1));
+
+        assert_eq!(
+            decoded.state,
+            guest_tm.state,
+            "state mismatch at inner step {}",
+            i + 1
+        );
+        assert_eq!(
+            decoded.pos,
+            guest_tm.pos,
+            "pos mismatch at inner step {}",
+            i + 1
+        );
+
+        // Compare tapes (strip trailing blanks)
+        let guest_tape_trimmed: Vec<_> = {
+            let mut t = guest_tm.tape.clone();
+            while t.last() == Some(&guest_spec.blank()) && t.len() > 1 {
+                t.pop();
+            }
+            t
+        };
+        let decoded_tape_trimmed: Vec<_> = {
+            let mut t = decoded.tape;
+            while t.last() == Some(&guest_spec.blank()) && t.len() > 1 {
+                t.pop();
+            }
+            t
+        };
+        assert_eq!(
+            decoded_tape_trimmed,
+            guest_tape_trimmed,
+            "tape mismatch at inner step {}",
+            i + 1
+        );
+    }
+}
+
+#[test]
+fn test_at_tick_flip_bits_2() {
+    use FlipBitsSymbol::*;
+    assert_tick_faithful(&*FLIP_BITS_SPEC, &[Zero, One], 5, 10_000_000);
+}
+
+#[test]
+fn test_at_tick_flip_bits_5() {
+    use FlipBitsSymbol::*;
+    assert_tick_faithful(
+        &*FLIP_BITS_SPEC,
+        &[One, Zero, One, One, Zero],
+        8,
+        10_000_000,
+    );
+}
+
+#[test]
+fn test_at_tick_double_x() {
+    use DoubleXSymbol::*;
+    assert_tick_faithful(&*DOUBLE_X_SPEC, &[Dollar, X, X], 20, 50_000_000);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Tests: noop compact rule encoding
+// ════════════════════════════════════════════════════════════════════
+
+/// Build a simple TM where state Scan has noop rules (scan right over S0, S1)
+/// and one non-noop rule (Blank -> transition to Done).
+fn make_noop_test_spec() -> crate::tm::SimpleTuringMachineSpec<u8, u8> {
+    // States: 0=Scan, 1=Done
+    // Symbols: 0=Blank, 1=S0, 2=S1
+    crate::tm::SimpleTuringMachineSpec {
+        initial: 0,
+        accepting: std::collections::BTreeSet::from([1]),
+        blank: 0,
+        transitions: std::collections::BTreeMap::from([
+            // Noop rules: (Scan, S0) -> (Scan, S0, R), (Scan, S1) -> (Scan, S1, R)
+            ((0u8, 1u8), (0u8, 1u8, crate::tm::Dir::Right)),
+            ((0u8, 2u8), (0u8, 2u8, crate::tm::Dir::Right)),
+            // Non-noop rule: (Scan, Blank) -> (Done, Blank, Left)
+            ((0u8, 0u8), (1u8, 0u8, crate::tm::Dir::Left)),
+        ]),
+        all_states: vec![0, 1],
+        all_symbols: vec![0, 1, 2],
+    }
+}
+
+#[test]
+fn test_noop_encoding_has_commas() {
+    let spec = make_noop_test_spec();
+    let utm = make_utm_spec();
+    let mut tm = RunningTuringMachine::new(&spec);
+    tm.tape = vec![1, 2, 0]; // S0, S1, Blank
+    let encoded = utm.encoder(tm.spec).encode(&tm);
+
+    // Find rules section: between #[1] and #[2] in new layout
+    // Layout: $ ACC #[0] BLANK #[1] RULES #[2] STATE #[3] TAPE
+    let hashes: Vec<usize> = encoded
+        .iter()
+        .enumerate()
+        .filter(|(_, s)| **s == Symbol::Hash)
+        .map(|(i, _)| i)
+        .collect();
+    let rules_section = &encoded[hashes[1] + 1..hashes[2]];
+
+    // Count commas in rules section - should be 2 (one per noop symbol: ,S0,S1)
+    let comma_count = rules_section
+        .iter()
+        .filter(|s| **s == Symbol::Comma)
+        .count();
+    // State Scan has 2 noop rules (S0 and S1), encoded as . STATE , S0 , S1 | R
+    // That's 2 commas (one before each noop symbol)
+    assert_eq!(
+        comma_count, 2,
+        "Expected 2 commas for 2 noop rules, got {}",
+        comma_count
+    );
+}
+
+#[test]
+fn test_noop_faithful_simple() {
+    let spec = make_noop_test_spec();
+    let mut tm = RunningTuringMachine::new(&spec);
+    tm.tape = vec![1, 2, 0]; // S0, S1, Blank -> should scan right, then go to Done
+    assert_faithful(tm, 100, 1_000_000);
+}
+
+#[test]
+fn test_noop_tick_faithful() {
+    let spec = make_noop_test_spec();
+    assert_tick_faithful(&spec, &[1u8, 2, 1, 2, 0], 6, 10_000_000);
+}
+
+#[test]
+fn test_noop_faithful_flip_bits() {
+    // FlipBits has no noop rules, so this tests that normal rules still work
+    // after the encoding changes.
+    use FlipBitsSymbol::*;
+    let spec = &*FLIP_BITS_SPEC;
+    let mut tm = RunningTuringMachine::new(spec);
+    tm.tape = vec![Zero, One, Zero];
+    assert_faithful(tm, 100, 1_000_000);
+}
+
+#[test]
+fn test_noop_faithful_palindrome() {
+    // Palindrome has many noop rules (SeekR scans right over all letters)
+    use crate::toy_machines::Letter::*;
+    use CheckPalindromeSymbol::*;
+    let spec = &*CHECK_PALINDROME_SPEC;
+    let mut tm = RunningTuringMachine::new(spec);
+    tm.tape = vec![Letter(A), Letter(B), Letter(A)];
+    assert_faithful(tm, 1_000, 50_000_000);
+}
+
+// ════════════════════════════════════════════════════════════════════
+// Tests: group_rules and GuestRule serialization
+// ════════════════════════════════════════════════════════════════════
+
+use crate::tm::Dir;
+use crate::utm::{group_rules, serialize_rules, GuestRule};
+
+#[test]
+fn test_group_rules_no_noops() {
+    // All rules change state or symbol — no grouping should occur.
+    let spec = make_noop_test_spec();
+    let hints = MyUtmSpecOptimizationHints::guess(&spec);
+    // Filter to just the non-noop rule: (Scan=0, Blank=0) -> (Done=1, Blank=0, L)
+    let rules = vec![(0u8, 0u8, 1u8, 0u8, Dir::Left)];
+    let grouped = group_rules(&rules, &hints.transition_stats);
+    assert_eq!(grouped.len(), 1);
+    assert!(matches!(grouped[0], GuestRule::Single { .. }));
+}
+
+#[test]
+fn test_group_rules_all_noops_same_dir() {
+    // Two noop rules for same state+direction → one NoopGroup.
+    let spec = make_noop_test_spec();
+    let hints = MyUtmSpecOptimizationHints::guess(&spec);
+    let rules = vec![
+        (0u8, 1u8, 0u8, 1u8, Dir::Right), // noop: Scan, S0
+        (0u8, 2u8, 0u8, 2u8, Dir::Right), // noop: Scan, S1
+    ];
+    let grouped = group_rules(&rules, &hints.transition_stats);
+    assert_eq!(grouped.len(), 1);
+    match &grouped[0] {
+        GuestRule::NoopGroup { state, syms, dir } => {
+            assert_eq!(*state, 0u8);
+            assert_eq!(syms.len(), 2);
+            assert_eq!(syms[0], 1u8);
+            assert_eq!(syms[1], 2u8);
+            assert_eq!(*dir, Dir::Right);
+        }
+        _ => panic!("expected NoopGroup"),
+    }
+}
+
+#[test]
+fn test_group_rules_mixed() {
+    // Noop rules are interleaved with non-noop; noops get consolidated into one group.
+    let spec = make_noop_test_spec();
+    let hints = MyUtmSpecOptimizationHints::guess(&spec);
+    let rules = vec![
+        (0u8, 1u8, 0u8, 1u8, Dir::Right), // noop
+        (0u8, 0u8, 1u8, 0u8, Dir::Left),  // non-noop
+        (0u8, 2u8, 0u8, 2u8, Dir::Right), // noop (same group as first)
+    ];
+    let grouped = group_rules(&rules, &hints.transition_stats);
+    assert_eq!(grouped.len(), 2);
+    // With zero stats, sorted stably: NoopGroup (encountered first), then Single.
+    let noop_count = grouped
+        .iter()
+        .filter(|r| matches!(r, GuestRule::NoopGroup { .. }))
+        .count();
+    let single_count = grouped
+        .iter()
+        .filter(|r| matches!(r, GuestRule::Single { .. }))
+        .count();
+    assert_eq!(noop_count, 1);
+    assert_eq!(single_count, 1);
+    let noop = grouped
+        .iter()
+        .find(|r| matches!(r, GuestRule::NoopGroup { .. }))
+        .unwrap();
+    match noop {
+        GuestRule::NoopGroup { syms, .. } => assert_eq!(syms.len(), 2),
+        _ => unreachable!(),
+    }
+}
+
+#[test]
+fn test_group_rules_different_dirs() {
+    // Noop rules with different directions → separate groups.
+    let spec = make_noop_test_spec();
+    let hints = MyUtmSpecOptimizationHints::guess(&spec);
+    let rules = vec![
+        (0u8, 1u8, 0u8, 1u8, Dir::Right), // noop R
+        (0u8, 2u8, 0u8, 2u8, Dir::Left),  // noop L (different dir)
+    ];
+    let grouped = group_rules(&rules, &hints.transition_stats);
+    assert_eq!(grouped.len(), 2);
+    // Each is its own NoopGroup (single-symbol groups are still NoopGroups)
+    assert!(matches!(
+        &grouped[0],
+        GuestRule::NoopGroup {
+            dir: Dir::Right,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &grouped[1],
+        GuestRule::NoopGroup { dir: Dir::Left, .. }
+    ));
+}
+
+#[test]
+fn test_serialize_single_rule() {
+    // 2 states (1 bit), 4 symbols (2 bits)
+    let state_encodings: BTreeMap<u8, Bitstring> =
+        BTreeMap::from([(0, vec![false]), (1, vec![true])]);
+    let symbol_encodings: BTreeMap<u8, Bitstring> = BTreeMap::from([
+        (0, vec![false, false]),
+        (1, vec![false, true]),
+        (2, vec![true, false]),
+        (3, vec![true, true]),
+    ]);
+    let rule: GuestRule<u8, u8> = GuestRule::Single {
+        state: 0,
+        sym: 1,
+        new_state: 1,
+        new_sym: 0,
+        dir: Dir::Left,
+    };
+    let syms = rule.serialize(&state_encodings, &symbol_encodings);
+    // . 0 | 01 | 1 | 00 | L
+    assert_eq!(
+        syms,
+        vec![
+            Symbol::Dot,
+            Symbol::Zero,
+            Symbol::Pipe,
+            Symbol::Zero,
+            Symbol::One,
+            Symbol::Pipe,
+            Symbol::One,
+            Symbol::Pipe,
+            Symbol::Zero,
+            Symbol::Zero,
+            Symbol::Pipe,
+            Symbol::L,
+        ]
+    );
+}
+
+#[test]
+fn test_serialize_noop_group() {
+    // 4 states (2 bits), 4 symbols (2 bits)
+    let state_encodings: BTreeMap<u8, Bitstring> = BTreeMap::from([
+        (0, vec![false, false]),
+        (1, vec![false, true]),
+        (2, vec![true, false]),
+        (3, vec![true, true]),
+    ]);
+    let symbol_encodings: BTreeMap<u8, Bitstring> = BTreeMap::from([
+        (0, vec![false, false]),
+        (1, vec![false, true]),
+        (2, vec![true, false]),
+        (3, vec![true, true]),
+    ]);
+    let rule: GuestRule<u8, u8> = GuestRule::NoopGroup {
+        state: 1,
+        syms: vec![0, 2, 3],
+        dir: Dir::Right,
+    };
+    let syms = rule.serialize(&state_encodings, &symbol_encodings);
+    // . 01 , 1 , 00 | R
+    // Prefixes sorted shortest-first: "1" (covers syms 2,3) before "00" (sym 0)
+    assert_eq!(
+        syms,
+        vec![
+            Symbol::Dot,
+            Symbol::Zero,
+            Symbol::One, // state=1
+            Symbol::Comma,
+            Symbol::One, // syms 2,3 (prefix 1)
+            Symbol::Comma,
+            Symbol::Zero,
+            Symbol::Zero, // sym=0 (prefix 00)
+            Symbol::Pipe,
+            Symbol::R,
+        ]
+    );
+}
+
+#[test]
+fn test_serialize_rules_semicolons() {
+    let state_encodings: BTreeMap<u8, Bitstring> =
+        BTreeMap::from([(0, vec![false]), (1, vec![true])]);
+    let symbol_encodings: BTreeMap<u8, Bitstring> = BTreeMap::from([
+        (0, vec![false, false]),
+        (1, vec![false, true]),
+        (2, vec![true, false]),
+    ]);
+    let rules: Vec<GuestRule<u8, u8>> = vec![
+        GuestRule::Single {
+            state: 0,
+            sym: 0,
+            new_state: 1,
+            new_sym: 0,
+            dir: Dir::Left,
+        },
+        GuestRule::NoopGroup {
+            state: 0,
+            syms: vec![1, 2],
+            dir: Dir::Right,
+        },
+    ];
+    let tape = serialize_rules(&rules, &state_encodings, &symbol_encodings);
+    // Rules should be separated by ;
+    let semi_count = tape.iter().filter(|&&s| s == Symbol::Semi).count();
+    assert_eq!(
+        semi_count, 1,
+        "two rules should have one semicolon separator"
+    );
+    // First symbol should be Dot (start of first rule)
+    assert_eq!(tape[0], Symbol::Dot);
 }

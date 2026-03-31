@@ -3,17 +3,17 @@
 // ════════════════════════════════════════════════════════════════════
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     sync::LazyLock,
 };
 
 use crate::tm::{Dir, SimpleTuringMachineSpec};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AccImmState {
     Init,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AccImmSymbol {
     Blank,
 }
@@ -21,17 +21,17 @@ pub static ACCEPT_IMMEDIATELY_SPEC: LazyLock<SimpleTuringMachineSpec<AccImmState
     LazyLock::new(|| SimpleTuringMachineSpec {
         initial: AccImmState::Init,
         blank: AccImmSymbol::Blank,
-        accepting: HashSet::from([AccImmState::Init]),
-        transitions: HashMap::new(),
+        accepting: BTreeSet::from([AccImmState::Init]),
+        transitions: BTreeMap::new(),
         all_states: vec![AccImmState::Init],
         all_symbols: vec![AccImmSymbol::Blank],
     });
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RejImmState {
     Init,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum RejImmSymbol {
     Blank,
 }
@@ -39,14 +39,14 @@ pub static REJECT_IMMEDIATELY_SPEC: LazyLock<SimpleTuringMachineSpec<RejImmState
     LazyLock::new(|| SimpleTuringMachineSpec {
         initial: RejImmState::Init,
         blank: RejImmSymbol::Blank,
-        accepting: HashSet::new(),
-        transitions: HashMap::new(),
+        accepting: BTreeSet::new(),
+        transitions: BTreeMap::new(),
         all_states: vec![RejImmState::Init],
         all_symbols: vec![RejImmSymbol::Blank],
     });
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub     enum Letter {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Letter {
     A,
     B,
     C,
@@ -105,7 +105,7 @@ fn all_letters() -> [Letter; 26] {
     ]
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CheckPalindromeState {
     Start,
     Accept,
@@ -113,7 +113,7 @@ pub enum CheckPalindromeState {
     SeekR(Letter),
     Check(Letter),
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum CheckPalindromeSymbol {
     Blank,
     Letter(Letter),
@@ -125,10 +125,10 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
     use CheckPalindromeState::*;
     use CheckPalindromeSymbol::*;
 
-    let mut transitions: HashMap<
+    let mut transitions: BTreeMap<
         (CheckPalindromeState, CheckPalindromeSymbol),
         (CheckPalindromeState, CheckPalindromeSymbol, Dir),
-    > = HashMap::new();
+    > = BTreeMap::new();
 
     // start rules
     transitions.insert((Start, Blank), (Accept, Blank, Dir::Right));
@@ -139,7 +139,10 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
     for letter in all_letters() {
         transitions.insert((SeekR(letter), Blank), (Check(letter), Blank, Dir::Left));
         for l2 in all_letters() {
-            transitions.insert((SeekR(letter), Letter(l2)), (SeekR(letter), Letter(l2), Dir::Right));
+            transitions.insert(
+                (SeekR(letter), Letter(l2)),
+                (SeekR(letter), Letter(l2), Dir::Right),
+            );
         }
     }
 
@@ -157,14 +160,14 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
 
     SimpleTuringMachineSpec {
         initial: CheckPalindromeState::Start,
-        accepting: HashSet::from([CheckPalindromeState::Accept]),
+        accepting: BTreeSet::from([CheckPalindromeState::Accept]),
         blank: CheckPalindromeSymbol::Blank,
-        transitions: HashMap::from(transitions),
+        transitions: BTreeMap::from(transitions),
         all_states: {
             let mut v = vec![
-            CheckPalindromeState::Start,
-            CheckPalindromeState::Accept,
-            CheckPalindromeState::SeekL,
+                CheckPalindromeState::Start,
+                CheckPalindromeState::Accept,
+                CheckPalindromeState::SeekL,
             ];
             for letter in all_letters() {
                 v.push(CheckPalindromeState::SeekR(letter));
@@ -173,9 +176,7 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
             v
         },
         all_symbols: {
-            let mut v = vec![
-            CheckPalindromeSymbol::Blank,
-            ];
+            let mut v = vec![CheckPalindromeSymbol::Blank];
             for letter in all_letters() {
                 v.push(CheckPalindromeSymbol::Letter(letter));
             }
@@ -184,7 +185,7 @@ pub static CHECK_PALINDROME_SPEC: LazyLock<
     }
 });
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DoubleXState {
     Start,
     FindX,
@@ -194,7 +195,7 @@ pub enum DoubleXState {
     CleanR,
     Done,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum DoubleXSymbol {
     Blank,
     Dollar,
@@ -208,9 +209,9 @@ pub static DOUBLE_X_SPEC: LazyLock<SimpleTuringMachineSpec<DoubleXState, DoubleX
         use DoubleXSymbol::*;
         SimpleTuringMachineSpec {
             initial: DoubleXState::Start,
-            accepting: HashSet::from([DoubleXState::Done]),
+            accepting: BTreeSet::from([DoubleXState::Done]),
             blank: DoubleXSymbol::Blank,
-            transitions: HashMap::from([
+            transitions: BTreeMap::from([
                 ((Start, Dollar), (FindX, Dollar, Dir::Right)),
                 ((FindX, X), (GoRight, Y, Dir::Right)),
                 ((FindX, Y), (FindX, Y, Dir::Right)),
@@ -234,12 +235,12 @@ pub static DOUBLE_X_SPEC: LazyLock<SimpleTuringMachineSpec<DoubleXState, DoubleX
         }
     });
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FlipBitsState {
     Flip,
     Done,
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum FlipBitsSymbol {
     Blank,
     Zero,
@@ -251,12 +252,12 @@ pub static FLIP_BITS_SPEC: LazyLock<SimpleTuringMachineSpec<FlipBitsState, FlipB
         use FlipBitsSymbol::*;
         SimpleTuringMachineSpec {
             initial: Flip,
-            accepting: HashSet::from([Done]),
+            accepting: BTreeSet::from([Done]),
             blank: Blank,
-            transitions: HashMap::from([
+            transitions: BTreeMap::from([
                 ((Flip, Zero), (Flip, One, Dir::Right)),
                 ((Flip, One), (Flip, Zero, Dir::Right)),
-                ((Flip, Blank), (Done, Blank, Dir::Left)),
+                ((Flip, Blank), (Done, Blank, Dir::Right)),
             ]),
             all_states: vec![Flip, Done],
             all_symbols: vec![Blank, Zero, One],

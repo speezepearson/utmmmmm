@@ -3,27 +3,37 @@
 // ════════════════════════════════════════════════════════════════════
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet},
     hash::Hash,
-    sync::LazyLock,
 };
 
-use crate::tm::{Dir, RunningTuringMachine, SimpleTuringMachineSpec, TuringMachineSpec};
+use crate::{
+    gen_utm::{Encoder, UtmSpec},
+    tm::{Dir, RunningTuringMachine, SimpleTuringMachineSpec, TuringMachineSpec},
+};
 
 // ── Newtype wrappers for type safety ──
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub enum State {
     Accept,
     AcceptSeekHome,
     AccFinalHome,
     AccRestAcc,
+    AccRestSkip1,
+    AccRestSkip2,
     AccRestState,
     ApplyReadNst,
     ChkAccBack2acc,
     ChkAccC0,
     ChkAccC0Find,
+    ChkAccC0Sk1,
+    ChkAccC0Sk2,
     ChkAccC1,
     ChkAccC1Find,
+    ChkAccC1Sk1,
+    ChkAccC1Sk2,
     ChkAccDoRest,
     ChkAccDoRest2,
     ChkAccFailBit,
@@ -32,15 +42,15 @@ pub enum State {
     ChkAccNextEntry,
     ChkAccOk,
     ChkAccOkAcc,
+    ChkAccOkSk1,
+    ChkAccOkSk2,
     ChkAccOkFind,
     ChkAccOkSkip,
     ChkAccRestState,
     CmpStC0,
     CmpStC0Find,
-    CmpStC0Sk1,
     CmpStC1,
     CmpStC1Find,
-    CmpStC1Sk1,
     CmpStFail,
     CmpStNextbit,
     CmpStOk,
@@ -49,24 +59,18 @@ pub enum State {
     CmpSymC0Fb,
     CmpSymC0Fh,
     CmpSymC0S1,
-    CmpSymC0S2,
-    CmpSymC0S3,
     CmpSymC1,
     CmpSymC1Fb,
     CmpSymC1Fh,
     CmpSymC1S1,
-    CmpSymC1S2,
-    CmpSymC1S3,
     CmpSymFail,
     CmpSymNb2,
     CmpSymNextbit,
     CmpSymOk,
     CmpSymRead,
     CpNstC0,
-    CpNstC0S1,
     CpNstC0W,
     CpNstC1,
-    CpNstC1S1,
     CpNstC1W,
     CpNstDone,
     CpNstNext,
@@ -74,7 +78,6 @@ pub enum State {
     CpNstNext3,
     CpNstRestDo,
     CpNstRestNav,
-    CpNstRestS1,
     CpNstRet,
     CpNsymC0,
     CpNsymC0Fb,
@@ -106,6 +109,7 @@ pub enum State {
     CpNsymRnS3,
     CpNsymSeek,
     DoneSeekHome,
+    DoneSeekHomeThroughState,
     Init,
     InitSeekEnd,
     InitSkip,
@@ -129,6 +133,7 @@ pub enum State {
     MrExtH2,
     MrExtH3,
     MrExtHome,
+    MrExtNavToHead,
     MrExtReadBlank,
     MrExtRestBlank,
     MrExtToBlank,
@@ -140,6 +145,11 @@ pub enum State {
     MrS2,
     MrS3,
     MrSkipCell,
+    NpMatchPre,
+    NpNextbit,
+    NpReadDir,
+    NpSmcHandler,
+    NpSymfRestore,
     RdRead,
     RdSk2,
     RdSk3,
@@ -150,14 +160,14 @@ pub enum State {
     RejectSeekHome,
     RejFinalHome,
     RejRestAcc,
+    RejRestSkip1,
+    RejRestSkip2,
     RejRestState,
     SmcFh,
     SmcRestDone,
     SmcRestHead,
     SmcRestSym,
     SmcS1,
-    SmcS2,
-    SmcS3,
     SmcSkipSt,
     StfFindStar,
     StfGoPrev,
@@ -168,7 +178,6 @@ pub enum State {
     StmBackToRule,
     StmGoLeft,
     StmGotoState,
-    StmGsSk1,
     StmRestoreRule,
     StmRestoreState,
     SymfDeactivate,
@@ -180,18 +189,24 @@ pub enum State {
     SymMatchCleanup,
     SymSkipState,
 }
-const ALL_STATES: [State; 166] = [
+const ALL_STATES: [State; 171] = [
     State::Accept,
     State::AcceptSeekHome,
     State::AccFinalHome,
     State::AccRestAcc,
+    State::AccRestSkip1,
+    State::AccRestSkip2,
     State::AccRestState,
     State::ApplyReadNst,
     State::ChkAccBack2acc,
     State::ChkAccC0,
     State::ChkAccC0Find,
+    State::ChkAccC0Sk1,
+    State::ChkAccC0Sk2,
     State::ChkAccC1,
     State::ChkAccC1Find,
+    State::ChkAccC1Sk1,
+    State::ChkAccC1Sk2,
     State::ChkAccDoRest,
     State::ChkAccDoRest2,
     State::ChkAccFailBit,
@@ -200,15 +215,15 @@ const ALL_STATES: [State; 166] = [
     State::ChkAccNextEntry,
     State::ChkAccOk,
     State::ChkAccOkAcc,
+    State::ChkAccOkSk1,
+    State::ChkAccOkSk2,
     State::ChkAccOkFind,
     State::ChkAccOkSkip,
     State::ChkAccRestState,
     State::CmpStC0,
     State::CmpStC0Find,
-    State::CmpStC0Sk1,
     State::CmpStC1,
     State::CmpStC1Find,
-    State::CmpStC1Sk1,
     State::CmpStFail,
     State::CmpStNextbit,
     State::CmpStOk,
@@ -217,24 +232,18 @@ const ALL_STATES: [State; 166] = [
     State::CmpSymC0Fb,
     State::CmpSymC0Fh,
     State::CmpSymC0S1,
-    State::CmpSymC0S2,
-    State::CmpSymC0S3,
     State::CmpSymC1,
     State::CmpSymC1Fb,
     State::CmpSymC1Fh,
     State::CmpSymC1S1,
-    State::CmpSymC1S2,
-    State::CmpSymC1S3,
     State::CmpSymFail,
     State::CmpSymNb2,
     State::CmpSymNextbit,
     State::CmpSymOk,
     State::CmpSymRead,
     State::CpNstC0,
-    State::CpNstC0S1,
     State::CpNstC0W,
     State::CpNstC1,
-    State::CpNstC1S1,
     State::CpNstC1W,
     State::CpNstDone,
     State::CpNstNext,
@@ -242,7 +251,6 @@ const ALL_STATES: [State; 166] = [
     State::CpNstNext3,
     State::CpNstRestDo,
     State::CpNstRestNav,
-    State::CpNstRestS1,
     State::CpNstRet,
     State::CpNsymC0,
     State::CpNsymC0Fb,
@@ -274,6 +282,7 @@ const ALL_STATES: [State; 166] = [
     State::CpNsymRnS3,
     State::CpNsymSeek,
     State::DoneSeekHome,
+    State::DoneSeekHomeThroughState,
     State::Init,
     State::InitSeekEnd,
     State::InitSkip,
@@ -297,6 +306,7 @@ const ALL_STATES: [State; 166] = [
     State::MrExtH2,
     State::MrExtH3,
     State::MrExtHome,
+    State::MrExtNavToHead,
     State::MrExtReadBlank,
     State::MrExtRestBlank,
     State::MrExtToBlank,
@@ -308,6 +318,11 @@ const ALL_STATES: [State; 166] = [
     State::MrS2,
     State::MrS3,
     State::MrSkipCell,
+    State::NpMatchPre,
+    State::NpNextbit,
+    State::NpReadDir,
+    State::NpSmcHandler,
+    State::NpSymfRestore,
     State::RdRead,
     State::RdSk2,
     State::RdSk3,
@@ -318,14 +333,14 @@ const ALL_STATES: [State; 166] = [
     State::RejectSeekHome,
     State::RejFinalHome,
     State::RejRestAcc,
+    State::RejRestSkip1,
+    State::RejRestSkip2,
     State::RejRestState,
     State::SmcFh,
     State::SmcRestDone,
     State::SmcRestHead,
     State::SmcRestSym,
     State::SmcS1,
-    State::SmcS2,
-    State::SmcS3,
     State::SmcSkipSt,
     State::StfFindStar,
     State::StfGoPrev,
@@ -336,7 +351,6 @@ const ALL_STATES: [State; 166] = [
     State::StmBackToRule,
     State::StmGoLeft,
     State::StmGotoState,
-    State::StmGsSk1,
     State::StmRestoreRule,
     State::StmRestoreState,
     State::SymfDeactivate,
@@ -349,7 +363,7 @@ const ALL_STATES: [State; 166] = [
     State::SymSkipState,
 ];
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Symbol {
     Blank,
     Zero,
@@ -437,268 +451,75 @@ impl<'de> serde::Deserialize<'de> for Symbol {
     }
 }
 
-const ALL_SYMBOLS: [Symbol; 16] = [
-    Symbol::Blank,
+/// const_concat!(a, b, c) == [...a, ...b, ...c]
+macro_rules! const_concat {
+    ($a:expr $(, $b:expr)*) => {const{
+        let mut out = [$a[0]; $a.len() $(+ $b.len())*];
+        let mut offset = 0;
+        let mut i = 0;
+        while i < $a.len() { out[offset+i] = $a[i]; i += 1; }
+        offset += $a.len();
+        $({
+            i = 0;
+            while i < $b.len() { out[offset+i] = $b[i]; i += 1; }
+            offset += $b.len();
+        })*
+        let _ = offset;
+        out
+    }
+    };
+}
+/// A group of symbols that we scan over very frequently.
+/// Their binary encodings are exactly those ones that start with 0,
+/// which makes them quick to scan over since the UTM abbreviates
+/// groups of scan-rules with prefixes.
+const ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R: [Symbol; 8] = [
     Symbol::Zero,
     Symbol::One,
-    Symbol::X,
-    Symbol::Y,
-    Symbol::Hash,
+    Symbol::Dot,
     Symbol::Pipe,
     Symbol::Semi,
     Symbol::Comma,
-    Symbol::Caret,
     Symbol::L,
     Symbol::R,
-    Symbol::Dot,
-    Symbol::Star,
-    Symbol::Gt,
-    Symbol::Dollar,
 ];
 
-pub trait UtmEncodingScheme {
-    type State;
-    type Symbol;
-    fn encode<Guest: TuringMachineSpec>(spec: &RunningTuringMachine<Guest>) -> Vec<Self::Symbol>;
-    fn decode<'a, Guest: TuringMachineSpec>(
-        guest: &'a Guest,
-        tape: &[Self::Symbol],
-    ) -> Result<RunningTuringMachine<'a, Guest>, String>;
-}
+/// A group of symbols that we scan over very frequently.
+/// Their binary encodings are exactly those ones that start with 10,
+/// which makes them quick to scan over since the UTM abbreviates
+/// groups of scan-rules with prefixes.
+const X_Y_STAR_GT: [Symbol; 4] = [Symbol::X, Symbol::Y, Symbol::Star, Symbol::Gt];
 
-pub struct MyUtmEncodingScheme;
-impl UtmEncodingScheme for MyUtmEncodingScheme {
-    type State = State;
-    type Symbol = Symbol;
+const ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT: [Symbol; 12] =
+    const_concat!(ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R, X_Y_STAR_GT);
 
-    // ════════════════════════════════════════════════════════════════════
-    // Encoding: encode an arbitrary TM + input into a UTM tape
-    // ════════════════════════════════════════════════════════════════════
-
-    /// Encode a guest TM spec into UTM tape symbols.
-    /// Layout: $ RULES # ACCEPTSTATES # STATE # BLANK # TAPE $
-    ///
-    /// RULES: dot-separated entries, each = stateBits | symBits | newStateBits | newSymBits | dir
-    /// ACCEPTSTATES: semicolon-separated state encodings
-    /// STATE: current state bits
-    /// BLANK: blank symbol bits
-    /// TAPE: comma-separated cells, head cell prefixed with ^
-    fn encode<Guest: TuringMachineSpec>(guest: &RunningTuringMachine<Guest>) -> Vec<Self::Symbol> {
-        Self::encode_with_rule_order(guest, None)
-    }
-
-    // ════════════════════════════════════════════════════════════════════
-    // Decoding: extract guest state from the UTM tape
-    // ════════════════════════════════════════════════════════════════════
-
-    /// Decode the UTM tape back into guest TM.
-    fn decode<'a, Guest: TuringMachineSpec>(
-        guest: &'a Guest,
-        tape: &[Self::Symbol],
-    ) -> Result<RunningTuringMachine<'a, Guest>, String> {
-        let guest_states: Vec<Guest::State> = guest.iter_states().collect();
-        let guest_symbols: Vec<Guest::Symbol> = guest.iter_symbols().collect();
-
-        let n_state_bits = num_bits(guest_states.len());
-        let n_sym_bits = num_bits(guest_symbols.len());
-
-        // Find the sections separated by #
-        // Layout: $ #[0] RULES #[1] ACC #[2] STATE #[3] BLANK #[4] TAPE $
-        let mut hashes: Vec<usize> = Vec::new();
-        for (i, &s) in tape.iter().enumerate() {
-            if s == Symbol::Hash {
-                hashes.push(i);
-            }
-        }
-
-        if hashes.len() < 5 {
-            return Err(format!(
-                "expected at least 5 # delimiters, found {}",
-                hashes.len()
-            ));
-        }
-
-        let state_start = hashes[2] + 1;
-        let state = guest_states[from_binary_at(tape, state_start, n_state_bits)];
-
-        let tape_start = hashes[4] + 1;
-        let tape_end = tape.len();
-
-        let tape_section = &tape[tape_start..tape_end];
-        let mut cells: Vec<usize> = Vec::new();
-        let mut head_pos: usize = 0;
-        let mut i = 0;
-        let mut cell_idx = 0;
-        while i < tape_section.len() {
-            let s = tape_section[i];
-            if s == Symbol::Blank || s == Symbol::Dollar {
-                break;
-            }
-            if s == Symbol::Comma {
-                i += 1;
-                cell_idx += 1;
-                continue;
-            }
-            if s == Symbol::Caret || s == Symbol::Gt {
-                if s == Symbol::Caret {
-                    head_pos = cell_idx;
-                }
-                i += 1;
-                continue;
-            }
-            if i + n_sym_bits > tape_section.len() {
-                break;
-            }
-            let val = from_binary_at(tape_section, i, n_sym_bits);
-            cells.push(val);
-            i += n_sym_bits;
-        }
-
-        Ok(RunningTuringMachine {
-            spec: guest,
-            state,
-            pos: head_pos,
-            tape: cells.iter().map(|&i| guest_symbols[i]).collect(),
-        })
-    }
-}
-
-impl MyUtmEncodingScheme {
-    /// Encode a guest TM, optionally reordering rules so that `last_rules`
-    /// appear at the end of the rules section (in the given order).
-    /// Rules not in `last_rules` appear first (in `iter_rules` order).
-    ///
-    /// The UTM scans rules right-to-left, so placing frequently-used rules
-    /// last reduces search time.
-    pub fn encode_with_rule_order<Guest: TuringMachineSpec>(
-        guest: &RunningTuringMachine<Guest>,
-        last_rules: Option<&[(Guest::State, Guest::Symbol)]>,
-    ) -> Vec<Symbol> {
-        let guest_states: Vec<Guest::State> = guest.spec.iter_states().collect();
-        let guest_symbols: Vec<Guest::Symbol> = guest.spec.iter_symbols().collect();
-
-        let guest_st_to_idx = guest_states
-            .iter()
-            .enumerate()
-            .map(|(i, s)| (*s, i))
-            .collect::<HashMap<Guest::State, usize>>();
-        let guest_sym_to_idx = guest_symbols
-            .iter()
-            .enumerate()
-            .map(|(i, s)| (*s, i))
-            .collect::<HashMap<Guest::Symbol, usize>>();
-
-        let n_state_bits = num_bits(guest_states.len());
-        let n_sym_bits = num_bits(guest_symbols.len());
-
-        // Collect all rules
-        type Rule<S, Y> = (S, Y, S, Y, Dir);
-        let all_rules: Vec<Rule<Guest::State, Guest::Symbol>> = guest.spec.iter_rules().collect();
-
-        // Reorder rules if last_rules is provided
-        let ordered_rules: Vec<&Rule<Guest::State, Guest::Symbol>> = match last_rules {
-            None => all_rules.iter().collect(),
-            Some(last) => {
-                let last_set: std::collections::HashSet<(Guest::State, Guest::Symbol)> =
-                    last.iter().copied().collect();
-                let mut front: Vec<&Rule<Guest::State, Guest::Symbol>> = all_rules
-                    .iter()
-                    .filter(|(st, sym, _, _, _)| !last_set.contains(&(*st, *sym)))
-                    .collect();
-                // Append last_rules in the specified order
-                for &(lst, lsym) in last {
-                    if let Some(rule) = all_rules
-                        .iter()
-                        .find(|(st, sym, _, _, _)| *st == lst && *sym == lsym)
-                    {
-                        front.push(rule);
-                    }
-                }
-                front
-            }
-        };
-
-        let mut tape: Vec<Symbol> = Vec::new();
-        tape.push(Symbol::Dollar);
-
-        // RULES section: # .rule1 ; .rule2 ; .rule3 ... #
-        tape.push(Symbol::Hash);
-        let mut first_rule = true;
-        for &(st, sym, nst, nsym, dir) in &ordered_rules {
-            if !first_rule {
-                tape.push(Symbol::Semi);
-            }
-            first_rule = false;
-            tape.push(Symbol::Dot);
-            tape.extend_from_slice(&to_binary(guest_st_to_idx[&st], n_state_bits));
-            tape.push(Symbol::Pipe);
-            tape.extend_from_slice(&to_binary(guest_sym_to_idx[&sym], n_sym_bits));
-            tape.push(Symbol::Pipe);
-            tape.extend_from_slice(&to_binary(guest_st_to_idx[&nst], n_state_bits));
-            tape.push(Symbol::Pipe);
-            tape.extend_from_slice(&to_binary(guest_sym_to_idx[&nsym], n_sym_bits));
-            tape.push(Symbol::Pipe);
-            tape.push(match dir {
-                Dir::Left => Symbol::L,
-                Dir::Right => Symbol::R,
-            });
-        }
-
-        tape.push(Symbol::Hash);
-        for (i, state) in guest
-            .spec
-            .iter_states()
-            .filter(|s| guest.spec.is_accepting(*s))
-            .enumerate()
-        {
-            if i > 0 {
-                tape.push(Symbol::Semi);
-            }
-            tape.extend_from_slice(&to_binary(guest_st_to_idx[&state], n_state_bits));
-        }
-
-        tape.push(Symbol::Hash);
-        tape.extend_from_slice(&to_binary(guest_st_to_idx[&guest.state], n_state_bits));
-
-        tape.push(Symbol::Hash);
-        tape.extend_from_slice(&to_binary(
-            guest_sym_to_idx[&guest.spec.blank()],
-            n_sym_bits,
-        ));
-
-        tape.push(Symbol::Hash);
-
-        let caret_pos = tape.len();
-        let default_tape = [guest.spec.blank()];
-        tape.extend_from_slice(&encode_tape(
-            &guest_sym_to_idx,
-            if guest.tape.is_empty() {
-                &default_tape
-            } else {
-                guest.tape.as_slice()
-            },
-        ));
-        tape[caret_pos] = Symbol::Caret;
-
-        tape
-    }
-}
+const ALL_SYMBOLS: [Symbol; 16] = const_concat!(
+    ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT,
+    [Symbol::Hash, Symbol::Caret, Symbol::Dollar, Symbol::Blank,]
+);
 
 // ── Helpers ──
 pub fn num_bits(count: usize) -> usize {
     1.max((count.max(2) as f64).log2().ceil() as usize)
 }
 
-pub fn to_binary(index: usize, width: usize) -> Vec<Symbol> {
+pub type Bitstring = Vec<bool>;
+
+pub fn to_binary(index: usize, width: usize) -> Bitstring {
+    if index >= 1 << width {
+        panic!("index {} is too large for width {}", index, width);
+    }
     let mut bits = Vec::with_capacity(width);
     for i in (0..width).rev() {
-        bits.push(if (index >> i) & 1 == 1 {
-            Symbol::One
-        } else {
-            Symbol::Zero
-        });
+        bits.push((index >> i) & 1 == 1);
     }
     bits
+}
+
+fn bitstring_to_symbols(bits: &[bool]) -> Vec<Symbol> {
+    bits.iter()
+        .map(|&b| if b { Symbol::One } else { Symbol::Zero })
+        .collect()
 }
 
 fn from_binary_at(tape: &[Symbol], start: usize, width: usize) -> usize {
@@ -718,10 +539,10 @@ fn from_binary_at(tape: &[Symbol], start: usize, width: usize) -> usize {
 }
 
 // ── RuleSet: transition table + ordered list for encoding ──
-struct RuleSet(HashMap<(State, Symbol), (State, Symbol, Dir)>);
+struct RuleSet(BTreeMap<(State, Symbol), (State, Symbol, Dir)>);
 impl RuleSet {
     fn new() -> Self {
-        Self(HashMap::new())
+        Self(BTreeMap::new())
     }
 
     fn add(&mut self, state: State, sym: Symbol, new_state: State, new_sym: Symbol, dir: Dir) {
@@ -791,6 +612,7 @@ fn seek_star(m: &mut RuleSet, from: State, to: State) {
             Symbol::Dot,
             Symbol::L,
             Symbol::R,
+            Symbol::Gt,
         ],
     );
     m.add(from, Symbol::Star, to, Symbol::Star, Dir::Right);
@@ -806,8 +628,8 @@ fn build_utm_rules() -> RuleSet {
     let mut r = RuleSet::new();
 
     // Symbol groups
-    let rule_internals: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R];
-    let rule_all: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R, Semi, Dot, Star];
+    let rule_internals: &[Symbol] = &[Zero, One, X, Y, Pipe, L, R, Comma];
+    let rule_all: &[Symbol] = &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT;
     let bits: &[Symbol] = &[Zero, One];
     let marked_bits: &[Symbol] = &[X, Y];
     let bits_and_marked: &[Symbol] = &[Zero, One, X, Y];
@@ -815,13 +637,21 @@ fn build_utm_rules() -> RuleSet {
     // ══════════════════════════════════════════════════════════════
     // PHASE 0: INIT
     // ══════════════════════════════════════════════════════════════
-    r.add(Init, Dollar, InitSkip, Dollar, Dir::Right);
-    r.add(Init, Hash, InitSeekEnd, Hash, Dir::Right);
+    // Layout: $ ACC #[0] BLANK #[1] RULES #[2] STATE ...
+    // Init starts at $ (or $+1 after seek_home), skip ACC and BLANK to reach RULES
+    r.add(Init, Dollar, Init, Dollar, Dir::Right);
+    // Scan right through ACCEPT content (bits, semicolons)
+    scan_right(&mut r, Init, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R);
+    // Hit #[0] → skip BLANK
+    r.add(Init, Hash, InitSkip, Hash, Dir::Right);
+    // InitSkip: scan right through BLANK (bits)
+    scan_right(&mut r, InitSkip, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R);
+    // Hit #[1] → enter RULES section
     r.add(InitSkip, Hash, InitSeekEnd, Hash, Dir::Right);
     {
         let s = InitSeekEnd;
         let mut syms: Vec<Symbol> = rule_internals.to_vec();
-        syms.extend_from_slice(&[Semi, Dot]);
+        syms.extend_from_slice(&[Semi, Dot, Gt]);
         scan_right(&mut r, s, &syms);
         r.add(s, Hash, MarkRule, Hash, Dir::Left);
     }
@@ -834,14 +664,12 @@ fn build_utm_rules() -> RuleSet {
         scan_left(&mut r, mr, rule_internals);
         r.add(mr, Semi, mr, Semi, Dir::Left);
         r.add(mr, Dot, CmpStRead, Star, Dir::Right);
-        r.add(mr, Hash, MarkRuleNoMatch, Hash, Dir::Right);
+        // No more rules: seek home to check accept states
+        r.add(mr, Hash, MarkRuleNoMatch, Hash, Dir::Left);
     }
     {
-        let nm = MarkRuleNoMatch;
-        let mut syms: Vec<Symbol> = rule_internals.to_vec();
-        syms.extend_from_slice(&[Semi, Dot]);
-        scan_right(&mut r, nm, &syms);
-        r.add(nm, Hash, ChkAccInit, Hash, Dir::Right);
+        // MarkRuleNoMatch: seek home (scan left to $) then enter ChkAccInit
+        seek_home(&mut r, MarkRuleNoMatch, ChkAccInit);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -850,18 +678,11 @@ fn build_utm_rules() -> RuleSet {
     r.add(CmpStRead, Zero, CmpStC0, X, Dir::Right);
     r.add(CmpStRead, One, CmpStC1, Y, Dir::Right);
     r.add(CmpStRead, Pipe, StMatchCleanup, Pipe, Dir::Right);
+    r.add(CmpStRead, Comma, StMatchCleanup, Comma, Dir::Right);
 
-    for (c_sym, carry, sk1, find) in [
-        (Zero, CmpStC0, CmpStC0Sk1, CmpStC0Find),
-        (One, CmpStC1, CmpStC1Sk1, CmpStC1Find),
-    ] {
+    for (c_sym, carry, find) in [(Zero, CmpStC0, CmpStC0Find), (One, CmpStC1, CmpStC1Find)] {
         scan_right(&mut r, carry, rule_all);
-        r.add(carry, Hash, sk1, Hash, Dir::Right);
-
-        let mut sk1_syms: Vec<Symbol> = bits_and_marked.to_vec();
-        sk1_syms.push(Semi);
-        scan_right(&mut r, sk1, &sk1_syms);
-        r.add(sk1, Hash, find, Hash, Dir::Right);
+        r.add(carry, Hash, find, Hash, Dir::Right);
 
         scan_right(&mut r, find, marked_bits);
         if c_sym == Zero {
@@ -881,6 +702,7 @@ fn build_utm_rules() -> RuleSet {
         r.add(nb, Zero, CmpStC0, X, Dir::Right);
         r.add(nb, One, CmpStC1, Y, Dir::Right);
         r.add(nb, Pipe, StMatchCleanup, Pipe, Dir::Right);
+        r.add(nb, Comma, StMatchCleanup, Comma, Dir::Right);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -895,6 +717,7 @@ fn build_utm_rules() -> RuleSet {
     {
         let gl = StmGoLeft;
         r.add(gl, Pipe, StmRestoreRule, Pipe, Dir::Left);
+        r.add(gl, Comma, StmRestoreRule, Comma, Dir::Left);
         scan_left(&mut r, gl, bits);
     }
     {
@@ -907,16 +730,9 @@ fn build_utm_rules() -> RuleSet {
     {
         let gs = StmGotoState;
         let mut syms: Vec<Symbol> = rule_internals.to_vec();
-        syms.extend_from_slice(&[Semi, Dot]);
+        syms.extend_from_slice(&[Semi, Dot, Gt]);
         scan_right(&mut r, gs, &syms);
-        r.add(gs, Hash, StmGsSk1, Hash, Dir::Right);
-    }
-    {
-        let sk = StmGsSk1;
-        let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-        syms.push(Semi);
-        scan_right(&mut r, sk, &syms);
-        r.add(sk, Hash, StmRestoreState, Hash, Dir::Right);
+        r.add(gs, Hash, StmRestoreState, Hash, Dir::Right);
     }
     {
         let rs = StmRestoreState;
@@ -932,6 +748,8 @@ fn build_utm_rules() -> RuleSet {
         let ss = SymSkipState;
         scan_right(&mut r, ss, bits);
         r.add(ss, Pipe, CmpSymRead, Pipe, Dir::Right);
+        // Noop rule: mark first comma as Caret to track current alternative
+        r.add(ss, Comma, CmpSymRead, Caret, Dir::Right);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -951,7 +769,7 @@ fn build_utm_rules() -> RuleSet {
     }
     {
         let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-        syms.extend_from_slice(&[Semi, Hash, Pipe, Dot, L, R]);
+        syms.extend_from_slice(&[Semi, Hash, Pipe, Dot, L, R, Comma, Gt]);
         scan_left(&mut r, StfFindStar, &syms);
         r.add(StfFindStar, Star, StfRestoreRule, Dot, Dir::Right);
     }
@@ -961,6 +779,7 @@ fn build_utm_rules() -> RuleSet {
         r.add(rr, Y, rr, One, Dir::Right);
         scan_right(&mut r, rr, bits);
         r.add(rr, Pipe, StfGoPrev, Pipe, Dir::Left);
+        r.add(rr, Comma, StfGoPrev, Comma, Dir::Left);
     }
     {
         let gp = StfGoPrev;
@@ -976,39 +795,26 @@ fn build_utm_rules() -> RuleSet {
     r.add(CmpSymRead, Pipe, SymMatchCleanup, Pipe, Dir::Right);
 
     for c in [0u8, 1u8] {
-        let (carry, s1, s2, s3, fh, fb) = if c == 0 {
-            (
-                CmpSymC0, CmpSymC0S1, CmpSymC0S2, CmpSymC0S3, CmpSymC0Fh, CmpSymC0Fb,
-            )
+        let (carry, s1, fh, fb) = if c == 0 {
+            (CmpSymC0, CmpSymC0S1, CmpSymC0Fh, CmpSymC0Fb)
         } else {
-            (
-                CmpSymC1, CmpSymC1S1, CmpSymC1S2, CmpSymC1S3, CmpSymC1Fh, CmpSymC1Fb,
-            )
+            (CmpSymC1, CmpSymC1S1, CmpSymC1Fh, CmpSymC1Fb)
         };
 
+        // Skip rest of rules to #[2]
         scan_right(&mut r, carry, rule_all);
         r.add(carry, Hash, s1, Hash, Dir::Right);
 
-        // Skip ACC
+        // Skip STATE to #[3]
+        scan_right(&mut r, s1, bits_and_marked);
+        r.add(s1, Hash, fh, Hash, Dir::Right);
+
+        // Find ^ in TAPE
         {
-            let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-            syms.push(Semi);
-            scan_right(&mut r, s1, &syms);
-            r.add(s1, Hash, s2, Hash, Dir::Right);
-        }
-        // Skip STATE
-        scan_right(&mut r, s2, bits_and_marked);
-        r.add(s2, Hash, s3, Hash, Dir::Right);
-        // Skip BLANK
-        scan_right(&mut r, s3, bits);
-        r.add(s3, Hash, fh, Hash, Dir::Right);
-        // Find ^
-        {
-            let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-            syms.push(Comma);
-            scan_right(&mut r, fh, &syms);
+            scan_right(&mut r, fh, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R);
             r.add(fh, Caret, fb, Caret, Dir::Right);
         }
+
         // Find next unmarked bit in head cell
         scan_right(&mut r, fb, marked_bits);
         if c == 0 {
@@ -1024,8 +830,11 @@ fn build_utm_rules() -> RuleSet {
     {
         seek_star(&mut r, CmpSymOk, CmpSymNextbit);
         let nb = CmpSymNextbit;
-        scan_right(&mut r, nb, bits);
+        // For noop rules, scan past commas between alternatives to reach Caret
+        scan_right(&mut r, nb, &[Zero, One, Comma]);
         r.add(nb, Pipe, CmpSymNb2, Pipe, Dir::Right);
+        // Noop: caret marks current alternative
+        r.add(nb, Caret, NpNextbit, Caret, Dir::Right);
     }
     {
         let nb2 = CmpSymNb2;
@@ -1033,6 +842,22 @@ fn build_utm_rules() -> RuleSet {
         r.add(nb2, Zero, CmpSymC0, X, Dir::Right);
         r.add(nb2, One, CmpSymC1, Y, Dir::Right);
         r.add(nb2, Pipe, SymMatchCleanup, Pipe, Dir::Right);
+    }
+    // ── Noop: NpNextbit - skip marked bits, read next bit or end-of-symbol
+    {
+        let np = NpNextbit;
+        scan_right(&mut r, np, marked_bits);
+        r.add(np, Zero, CmpSymC0, X, Dir::Right);
+        r.add(np, One, CmpSymC1, Y, Dir::Right);
+        // End of current noop symbol: all bits matched!
+        r.add(np, Comma, NpMatchPre, Comma, Dir::Left);
+        r.add(np, Pipe, NpMatchPre, Pipe, Dir::Left);
+    }
+    // ── Noop match: scan left to Caret, restore to Comma, enter SymMatchCleanup
+    {
+        let mp = NpMatchPre;
+        scan_left(&mut r, mp, marked_bits);
+        r.add(mp, Caret, SymMatchCleanup, Comma, Dir::Right);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -1056,8 +881,22 @@ fn build_utm_rules() -> RuleSet {
     }
     {
         let ss = SymfSkipSt;
-        scan_right(&mut r, ss, bits);
+        // For noop rules, scan past commas to reach Caret (current alternative marker)
+        scan_right(&mut r, ss, &[Zero, One, Comma]);
         r.add(ss, Pipe, SymfRestSym, Pipe, Dir::Right);
+        // Noop: found current alternative marker
+        r.add(ss, Caret, NpSymfRestore, Comma, Dir::Right);
+    }
+    // ── Noop mismatch: restore current alt marks, try next or deactivate
+    {
+        let nr = NpSymfRestore;
+        r.add(nr, X, nr, Zero, Dir::Right);
+        r.add(nr, Y, nr, One, Dir::Right);
+        scan_right(&mut r, nr, bits);
+        // Next alternative: mark comma as caret, re-enter symbol comparison
+        r.add(nr, Comma, CmpSymRead, Caret, Dir::Right);
+        // No more alternatives: deactivate rule
+        r.add(nr, Pipe, SymfDeactivate, Pipe, Dir::Left);
     }
     {
         let rs = SymfRestSym;
@@ -1070,6 +909,7 @@ fn build_utm_rules() -> RuleSet {
         let da = SymfDeactivate;
         let mut syms: Vec<Symbol> = bits.to_vec();
         syms.push(Pipe);
+        syms.push(Comma);
         scan_left(&mut r, da, &syms);
         r.add(da, Star, MarkRule, Dot, Dir::Left);
     }
@@ -1080,35 +920,24 @@ fn build_utm_rules() -> RuleSet {
     {
         let sc = SymMatchCleanup;
         let mut syms: Vec<Symbol> = rule_internals.to_vec();
-        syms.extend_from_slice(&[Semi, Dot]);
+        syms.extend_from_slice(&[Semi, Dot, Gt]);
         scan_right(&mut r, sc, &syms);
         r.add(sc, Hash, SmcS1, Hash, Dir::Right);
     }
     {
+        // SmcS1: skip STATE to #[3]
         let s1 = SmcS1;
-        let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-        syms.push(Semi);
-        scan_right(&mut r, s1, &syms);
-        r.add(s1, Hash, SmcS2, Hash, Dir::Right);
+        scan_right(&mut r, s1, bits_and_marked);
+        r.add(s1, Hash, SmcFh, Hash, Dir::Right);
     }
     {
-        let s2 = SmcS2;
-        scan_right(&mut r, s2, bits_and_marked);
-        r.add(s2, Hash, SmcS3, Hash, Dir::Right);
-    }
-    {
-        let s3 = SmcS3;
-        scan_right(&mut r, s3, bits);
-        r.add(s3, Hash, SmcFh, Hash, Dir::Right);
-    }
-    {
+        // SmcFh: find ^ in TAPE
         let fh = SmcFh;
-        let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-        syms.push(Comma);
-        scan_right(&mut r, fh, &syms);
+        scan_right(&mut r, fh, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R);
         r.add(fh, Caret, SmcRestHead, Caret, Dir::Right);
     }
     {
+        // SmcRestHead: restore head cell marks
         let rh = SmcRestHead;
         r.add(rh, X, rh, Zero, Dir::Right);
         r.add(rh, Y, rh, One, Dir::Right);
@@ -1123,6 +952,20 @@ fn build_utm_rules() -> RuleSet {
         let ss = SmcSkipSt;
         scan_right(&mut r, ss, bits);
         r.add(ss, Pipe, SmcRestSym, Pipe, Dir::Right);
+        // Noop: after cleanup, skip all symbol alternatives to direction
+        r.add(ss, Comma, NpSmcHandler, Comma, Dir::Right);
+    }
+    // ── Noop post-match: restore marks, skip to | and read direction
+    {
+        let h = NpSmcHandler;
+        r.add(h, X, h, Zero, Dir::Right);
+        r.add(h, Y, h, One, Dir::Right);
+        scan_right(&mut r, h, &[Zero, One, Comma]);
+        r.add(h, Pipe, NpReadDir, Pipe, Dir::Right);
+    }
+    {
+        r.add(NpReadDir, L, MoveLeft, L, Dir::Left);
+        r.add(NpReadDir, R, MoveRight, R, Dir::Left);
     }
     {
         let rs = SmcRestSym;
@@ -1140,21 +983,15 @@ fn build_utm_rules() -> RuleSet {
     r.add(ApplyReadNst, Pipe, CpNstDone, Pipe, Dir::Left);
 
     for c in [0u8, 1u8] {
-        let (carry, s1, w, mark) = if c == 0 {
-            (CpNstC0, CpNstC0S1, CpNstC0W, X)
+        let (carry, w, mark) = if c == 0 {
+            (CpNstC0, CpNstC0W, X)
         } else {
-            (CpNstC1, CpNstC1S1, CpNstC1W, Y)
+            (CpNstC1, CpNstC1W, Y)
         };
 
+        // Skip rules+accept to #[1], then directly in STATE
         scan_right(&mut r, carry, rule_all);
-        r.add(carry, Hash, s1, Hash, Dir::Right);
-
-        {
-            let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-            syms.push(Semi);
-            scan_right(&mut r, s1, &syms);
-            r.add(s1, Hash, w, Hash, Dir::Right);
-        }
+        r.add(carry, Hash, w, Hash, Dir::Right);
 
         scan_right(&mut r, w, marked_bits);
         r.add(w, Zero, CpNstRet, mark, Dir::Left);
@@ -1191,16 +1028,9 @@ fn build_utm_rules() -> RuleSet {
     {
         let nav = CpNstRestNav;
         let mut syms: Vec<Symbol> = rule_internals.to_vec();
-        syms.extend_from_slice(&[Semi, Dot]);
+        syms.extend_from_slice(&[Semi, Dot, Gt]);
         scan_right(&mut r, nav, &syms);
-        r.add(nav, Hash, CpNstRestS1, Hash, Dir::Right);
-    }
-    {
-        let s1 = CpNstRestS1;
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.push(Semi);
-        scan_right(&mut r, s1, &syms);
-        r.add(s1, Hash, CpNstRestDo, Hash, Dir::Right);
+        r.add(nav, Hash, CpNstRestDo, Hash, Dir::Right);
     }
     {
         let rd = CpNstRestDo;
@@ -1236,37 +1066,24 @@ fn build_utm_rules() -> RuleSet {
     r.add(CpNsymRead, One, CpNsymC1, Y, Dir::Right);
     r.add(CpNsymRead, Pipe, CpNsymDone, Pipe, Dir::Left);
 
-    // Carry to head cell: skip rules, ACC, STATE, BLANK, find ^
+    // Carry to head cell: skip rules, STATE, find ^
     for c in [0u8, 1u8] {
-        let (carry, s1, s2, s3, fh, fb, mark) = if c == 0 {
-            (
-                CpNsymC0, CpNsymC0S1, CpNsymC0S2, CpNsymC0S3, CpNsymC0Fh, CpNsymC0Fb, X,
-            )
+        let (carry, s1, fh, fb, mark) = if c == 0 {
+            (CpNsymC0, CpNsymC0S1, CpNsymC0Fh, CpNsymC0Fb, X)
         } else {
-            (
-                CpNsymC1, CpNsymC1S1, CpNsymC1S2, CpNsymC1S3, CpNsymC1Fh, CpNsymC1Fb, Y,
-            )
+            (CpNsymC1, CpNsymC1S1, CpNsymC1Fh, CpNsymC1Fb, Y)
         };
 
         scan_right(&mut r, carry, rule_all);
         r.add(carry, Hash, s1, Hash, Dir::Right);
 
-        {
-            let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-            syms.push(Semi);
-            scan_right(&mut r, s1, &syms);
-            r.add(s1, Hash, s2, Hash, Dir::Right);
-        }
-        scan_right(&mut r, s2, bits_and_marked);
-        r.add(s2, Hash, s3, Hash, Dir::Right);
+        // s1: skip STATE → directly into TAPE
+        scan_right(&mut r, s1, bits_and_marked);
+        r.add(s1, Hash, fh, Hash, Dir::Right);
 
-        scan_right(&mut r, s3, bits);
-        r.add(s3, Hash, fh, Hash, Dir::Right);
-
+        // fh: find ^ in TAPE
         {
-            let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-            syms.push(Comma);
-            scan_right(&mut r, fh, &syms);
+            scan_right(&mut r, fh, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R);
             r.add(fh, Caret, fb, Caret, Dir::Right);
         }
 
@@ -1310,28 +1127,18 @@ fn build_utm_rules() -> RuleSet {
     {
         let nav = CpNsymRestNav;
         let mut syms: Vec<Symbol> = rule_internals.to_vec();
-        syms.extend_from_slice(&[Semi, Dot]);
+        syms.extend_from_slice(&[Semi, Dot, Gt]);
         scan_right(&mut r, nav, &syms);
         r.add(nav, Hash, CpNsymRnS1, Hash, Dir::Right);
     }
     {
+        // CpNsymRnS1: skip STATE → directly into TAPE
         let s1 = CpNsymRnS1;
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.push(Semi);
-        scan_right(&mut r, s1, &syms);
-        r.add(s1, Hash, CpNsymRnS2, Hash, Dir::Right);
+        scan_right(&mut r, s1, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R);
+        r.add(s1, Hash, CpNsymRnFh, Hash, Dir::Right);
     }
     {
-        let s2 = CpNsymRnS2;
-        scan_right(&mut r, s2, bits);
-        r.add(s2, Hash, CpNsymRnS3, Hash, Dir::Right);
-    }
-    {
-        let s3 = CpNsymRnS3;
-        scan_right(&mut r, s3, bits);
-        r.add(s3, Hash, CpNsymRnFh, Hash, Dir::Right);
-    }
-    {
+        // CpNsymRnFh: find ^ in TAPE
         let fh = CpNsymRnFh;
         let mut syms: Vec<Symbol> = bits.to_vec();
         syms.push(Comma);
@@ -1384,39 +1191,26 @@ fn build_utm_rules() -> RuleSet {
     {
         let mr = MoveRight;
         let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.extend_from_slice(&[Pipe, L, R]);
+        syms.extend_from_slice(&[Pipe, L, R, Comma]);
         scan_left(&mut r, mr, &syms);
         r.add(mr, Star, MrNav, Dot, Dir::Right);
     }
     {
         let nav = MrNav;
         let mut syms: Vec<Symbol> = rule_internals.to_vec();
-        syms.extend_from_slice(&[Semi, Dot]);
+        syms.extend_from_slice(&[Semi, Dot, Gt]);
         scan_right(&mut r, nav, &syms);
         r.add(nav, Hash, MrS1, Hash, Dir::Right);
     }
     {
+        // MrS1: skip STATE → directly into TAPE
         let s1 = MrS1;
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.push(Semi);
-        scan_right(&mut r, s1, &syms);
-        r.add(s1, Hash, MrS2, Hash, Dir::Right);
-    }
-    {
-        let s2 = MrS2;
-        scan_right(&mut r, s2, bits);
-        r.add(s2, Hash, MrS3, Hash, Dir::Right);
-    }
-    {
-        let s3 = MrS3;
-        scan_right(&mut r, s3, bits);
-        r.add(s3, Hash, MrFindHead, Hash, Dir::Right);
+        scan_right(&mut r, s1, bits);
+        r.add(s1, Hash, MrFindHead, Hash, Dir::Right);
     }
     {
         let fh = MrFindHead;
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.push(Comma);
-        scan_right(&mut r, fh, &syms);
+        scan_right(&mut r, fh, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R);
         r.add(fh, Caret, MrSkipCell, Gt, Dir::Right);
     }
     {
@@ -1446,27 +1240,10 @@ fn build_utm_rules() -> RuleSet {
         seek_home(&mut r, MrExtWriteHead, MrExtHome);
     }
     {
+        // MrExtHome: at $+1, skip ACCEPT to reach BLANK
         let eh = MrExtHome;
-        r.add(eh, Hash, MrExtH1, Hash, Dir::Right);
-    }
-    {
-        let h1 = MrExtH1;
-        let mut syms: Vec<Symbol> = rule_internals.to_vec();
-        syms.extend_from_slice(&[Semi, Dot]);
-        scan_right(&mut r, h1, &syms);
-        r.add(h1, Hash, MrExtH2, Hash, Dir::Right);
-    }
-    {
-        let h2 = MrExtH2;
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.push(Semi);
-        scan_right(&mut r, h2, &syms);
-        r.add(h2, Hash, MrExtH3, Hash, Dir::Right);
-    }
-    {
-        let h3 = MrExtH3;
-        scan_right(&mut r, h3, bits);
-        r.add(h3, Hash, MrExtReadBlank, Hash, Dir::Right);
+        scan_right(&mut r, eh, &[Zero, One, Semi]);
+        r.add(eh, Hash, MrExtReadBlank, Hash, Dir::Right);
     }
     {
         let rb = MrExtReadBlank;
@@ -1474,24 +1251,28 @@ fn build_utm_rules() -> RuleSet {
         r.add(rb, One, MrExtBc1, Y, Dir::Right);
         r.add(rb, Hash, MrExtRestBlank, Hash, Dir::Left);
     }
-    for c in [0u8, 1u8] {
-        let (carry, c_sym) = if c == 0 {
-            (MrExtBc0, Zero)
-        } else {
-            (MrExtBc1, One)
-        };
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.extend_from_slice(&[Hash, Comma, Caret]);
-        scan_right(&mut r, carry, &syms);
-        r.add(carry, Blank, MrExtBcRet, c_sym, Dir::Left);
-    }
+    // Carry blank bits from BLANK to end of TAPE.
+    // Path: BLANK → #[1] → RULES → #[2] → STATE → #[3] → TAPE → Blank
+    // All sections between BLANK and end-of-tape are clean (no X/Y marks).
     {
-        let ret = MrExtBcRet;
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.extend_from_slice(&[Hash, Comma, Caret]);
-        scan_left(&mut r, ret, &syms);
-        r.add(ret, X, MrExtBcNext, X, Dir::Right);
-        r.add(ret, Y, MrExtBcNext, Y, Dir::Right);
+        let all_between: Vec<Symbol> = vec![
+            Zero, One, Hash, Comma, Caret, Pipe, Semi, Dot, L, R, Star, Gt,
+        ];
+        for c in [0u8, 1u8] {
+            let (carry, c_sym) = if c == 0 {
+                (MrExtBc0, Zero)
+            } else {
+                (MrExtBc1, One)
+            };
+            scan_right(&mut r, carry, &all_between);
+            r.add(carry, Blank, MrExtBcRet, c_sym, Dir::Left);
+        }
+        {
+            let ret = MrExtBcRet;
+            scan_left(&mut r, ret, &all_between);
+            r.add(ret, X, MrExtBcNext, X, Dir::Right);
+            r.add(ret, Y, MrExtBcNext, Y, Dir::Right);
+        }
     }
     {
         let next = MrExtBcNext;
@@ -1505,7 +1286,16 @@ fn build_utm_rules() -> RuleSet {
         r.add(rb, X, rb, Zero, Dir::Left);
         r.add(rb, Y, rb, One, Dir::Left);
         scan_left(&mut r, rb, bits);
-        r.add(rb, Hash, DoneSeekHome, Hash, Dir::Left);
+        // Navigate right from BLANK boundary to find ^ in TAPE
+        r.add(rb, Hash, MrExtNavToHead, Hash, Dir::Right);
+    }
+    {
+        // MrExtNavToHead: scan right past all sections to find ^ in TAPE
+        let nth = MrExtNavToHead;
+        let mut syms: Vec<Symbol> = bits.to_vec();
+        syms.extend_from_slice(&[Hash, Comma, Pipe, Semi, Dot, L, R, Star, Gt]);
+        scan_right(&mut r, nth, &syms);
+        r.add(nth, Caret, DoneSeekHome, Caret, Dir::Left);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -1514,39 +1304,26 @@ fn build_utm_rules() -> RuleSet {
     {
         let ml = MoveLeft;
         let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.extend_from_slice(&[Pipe, L, R]);
+        syms.extend_from_slice(&[Pipe, L, R, Comma]);
         scan_left(&mut r, ml, &syms);
         r.add(ml, Star, MlNav, Dot, Dir::Right);
     }
     {
         let nav = MlNav;
         let mut syms: Vec<Symbol> = rule_internals.to_vec();
-        syms.extend_from_slice(&[Semi, Dot]);
+        syms.extend_from_slice(&[Semi, Dot, Gt]);
         scan_right(&mut r, nav, &syms);
         r.add(nav, Hash, MlS1, Hash, Dir::Right);
     }
     {
+        // MlS1: skip STATE → directly into TAPE
         let s1 = MlS1;
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.push(Semi);
-        scan_right(&mut r, s1, &syms);
-        r.add(s1, Hash, MlS2, Hash, Dir::Right);
-    }
-    {
-        let s2 = MlS2;
-        scan_right(&mut r, s2, bits);
-        r.add(s2, Hash, MlS3, Hash, Dir::Right);
-    }
-    {
-        let s3 = MlS3;
-        scan_right(&mut r, s3, bits);
-        r.add(s3, Hash, MlFindHead, Hash, Dir::Right);
+        scan_right(&mut r, s1, bits);
+        r.add(s1, Hash, MlFindHead, Hash, Dir::Right);
     }
     {
         let fh = MlFindHead;
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.push(Comma);
-        scan_right(&mut r, fh, &syms);
+        scan_right(&mut r, fh, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R);
         r.add(fh, Caret, MlMark, Gt, Dir::Left);
     }
     {
@@ -1563,24 +1340,60 @@ fn build_utm_rules() -> RuleSet {
     // ══════════════════════════════════════════════════════════════
     // PHASE 7: SEEK HOME AND RESTART
     // ══════════════════════════════════════════════════════════════
-    seek_home(&mut r, DoneSeekHome, Init);
+    {
+        scan_left(
+            &mut r,
+            DoneSeekHome,
+            &const_concat!(ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT, [Caret]),
+        );
+        r.add(
+            DoneSeekHome,
+            Hash,
+            DoneSeekHomeThroughState,
+            Hash,
+            Dir::Left,
+        );
+        scan_left(
+            &mut r,
+            DoneSeekHomeThroughState,
+            &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT,
+        );
+        r.add(DoneSeekHomeThroughState, Hash, MarkRule, Hash, Dir::Left);
+    }
 
     // ══════════════════════════════════════════════════════════════
     // PHASE 8: CHECK ACCEPT STATES
     // ══════════════════════════════════════════════════════════════
+    // Layout: $ ACC #[0] BLANK #[1] RULES #[2] STATE #[3] TAPE
+    // ChkAccInit enters at $+1 (start of ACCEPT section)
     {
         let ci = ChkAccInit;
+        // If ACCEPT is empty, #[0] is right after $
         r.add(ci, Hash, RejFinalHome, Hash, Dir::Left);
         r.add(ci, Zero, ChkAccC0, X, Dir::Right);
         r.add(ci, One, ChkAccC1, Y, Dir::Right);
     }
 
-    for (carry, find) in [(ChkAccC0, ChkAccC0Find), (ChkAccC1, ChkAccC1Find)] {
+    // Carry accept bit to STATE: skip rest of ACC → #[0] → BLANK → #[1] → RULES → #[2] → STATE
+    for (carry, sk1, sk2, find) in [
+        (ChkAccC0, ChkAccC0Sk1, ChkAccC0Sk2, ChkAccC0Find),
+        (ChkAccC1, ChkAccC1Sk1, ChkAccC1Sk2, ChkAccC1Find),
+    ] {
+        // Scan right through remaining ACCEPT content
         let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
         syms.push(Semi);
         scan_right(&mut r, carry, &syms);
-        r.add(carry, Hash, find, Hash, Dir::Right);
+        r.add(carry, Hash, sk1, Hash, Dir::Right);
 
+        // sk1: skip BLANK → #[1]
+        scan_right(&mut r, sk1, bits);
+        r.add(sk1, Hash, sk2, Hash, Dir::Right);
+
+        // sk2: skip RULES → #[2]
+        scan_right(&mut r, sk2, rule_all);
+        r.add(sk2, Hash, find, Hash, Dir::Right);
+
+        // find: in STATE, find next unmarked bit
         scan_right(&mut r, find, marked_bits);
         if carry == ChkAccC0 {
             r.add(find, Zero, ChkAccOk, X, Dir::Left);
@@ -1591,20 +1404,35 @@ fn build_utm_rules() -> RuleSet {
         }
     }
 
-    // Bit matched -> go back for next bit
+    // Bit matched -> go back to ACCEPT for next bit
+    // From STATE, go left: #[2] → RULES → #[1] → BLANK → #[0] → ACCEPT → $
     {
         let ok = ChkAccOk;
         scan_left(&mut r, ok, bits_and_marked);
-        r.add(ok, Hash, ChkAccOkAcc, Hash, Dir::Left);
+        r.add(ok, Hash, ChkAccOkSk1, Hash, Dir::Left);
     }
     {
+        // ChkAccOkSk1: skip RULES leftward → #[1]
+        let sk1 = ChkAccOkSk1;
+        scan_left(&mut r, sk1, rule_all);
+        r.add(sk1, Hash, ChkAccOkSk2, Hash, Dir::Left);
+    }
+    {
+        // ChkAccOkSk2: skip BLANK leftward → #[0]
+        let sk2 = ChkAccOkSk2;
+        scan_left(&mut r, sk2, bits);
+        r.add(sk2, Hash, ChkAccOkAcc, Hash, Dir::Left);
+    }
+    {
+        // ChkAccOkAcc: in ACCEPT, scan left to $
         let oa = ChkAccOkAcc;
         let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
         syms.push(Semi);
         scan_left(&mut r, oa, &syms);
-        r.add(oa, Hash, ChkAccOkFind, Hash, Dir::Right);
+        r.add(oa, Dollar, ChkAccOkFind, Dollar, Dir::Right);
     }
     {
+        // ChkAccOkFind: scan right to find next marked bit (resume position)
         let of_ = ChkAccOkFind;
         let mut syms: Vec<Symbol> = bits.to_vec();
         syms.push(Semi);
@@ -1622,7 +1450,7 @@ fn build_utm_rules() -> RuleSet {
         r.add(skip, Hash, AcceptSeekHome, Hash, Dir::Left);
     }
 
-    // Bit mismatch -> restore STATE marks, restore acc entry marks, try next entry
+    // Bit mismatch -> restore STATE marks, return to ACCEPT, restore entry, try next
     {
         let fb = ChkAccFailBit;
         scan_left(&mut r, fb, bits_and_marked);
@@ -1636,16 +1464,18 @@ fn build_utm_rules() -> RuleSet {
         r.add(rs, Hash, ChkAccBack2acc, Hash, Dir::Left);
     }
     {
+        // ChkAccBack2acc: go left from right boundary of STATE, cross RULES and BLANK to ACCEPT
         let ba = ChkAccBack2acc;
         scan_left(&mut r, ba, bits);
         r.add(ba, Hash, ChkAccIntoAcc, Hash, Dir::Left);
     }
     {
+        // ChkAccIntoAcc: scan left through RULES, BLANK, into ACCEPT, to $
         let ia = ChkAccIntoAcc;
         let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
-        syms.push(Semi);
+        syms.extend_from_slice(&[Semi, Hash, Pipe, Dot, L, R, Comma, Star, Gt]);
         scan_left(&mut r, ia, &syms);
-        r.add(ia, Hash, ChkAccDoRest, Hash, Dir::Right);
+        r.add(ia, Dollar, ChkAccDoRest, Dollar, Dir::Right);
     }
     {
         let dr = ChkAccDoRest;
@@ -1676,7 +1506,7 @@ fn build_utm_rules() -> RuleSet {
         let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
         syms.push(Semi);
         scan_left(&mut r, ash, &syms);
-        r.add(ash, Hash, AccRestAcc, Hash, Dir::Right);
+        r.add(ash, Dollar, AccRestAcc, Dollar, Dir::Right);
     }
     {
         let ra = AccRestAcc;
@@ -1685,7 +1515,20 @@ fn build_utm_rules() -> RuleSet {
         let mut syms: Vec<Symbol> = bits.to_vec();
         syms.push(Semi);
         scan_right(&mut r, ra, &syms);
-        r.add(ra, Hash, AccRestState, Hash, Dir::Right);
+        // Hit #[0] → skip BLANK → #[1] → skip RULES → #[2] → STATE
+        r.add(ra, Hash, AccRestSkip1, Hash, Dir::Right);
+    }
+    {
+        // AccRestSkip1: skip BLANK
+        let sk1 = AccRestSkip1;
+        scan_right(&mut r, sk1, bits);
+        r.add(sk1, Hash, AccRestSkip2, Hash, Dir::Right);
+    }
+    {
+        // AccRestSkip2: skip RULES
+        let sk2 = AccRestSkip2;
+        scan_right(&mut r, sk2, rule_all);
+        r.add(sk2, Hash, AccRestState, Hash, Dir::Right);
     }
     {
         let rs = AccRestState;
@@ -1702,7 +1545,7 @@ fn build_utm_rules() -> RuleSet {
         let mut syms: Vec<Symbol> = bits_and_marked.to_vec();
         syms.push(Semi);
         scan_left(&mut r, rsh, &syms);
-        r.add(rsh, Hash, RejRestAcc, Hash, Dir::Right);
+        r.add(rsh, Dollar, RejRestAcc, Dollar, Dir::Right);
     }
     {
         let ra = RejRestAcc;
@@ -1711,7 +1554,20 @@ fn build_utm_rules() -> RuleSet {
         let mut syms: Vec<Symbol> = bits.to_vec();
         syms.push(Semi);
         scan_right(&mut r, ra, &syms);
-        r.add(ra, Hash, RejRestState, Hash, Dir::Right);
+        // Hit #[0] → skip BLANK → #[1] → skip RULES → #[2] → STATE
+        r.add(ra, Hash, RejRestSkip1, Hash, Dir::Right);
+    }
+    {
+        // RejRestSkip1: skip BLANK
+        let sk1 = RejRestSkip1;
+        scan_right(&mut r, sk1, bits);
+        r.add(sk1, Hash, RejRestSkip2, Hash, Dir::Right);
+    }
+    {
+        // RejRestSkip2: skip RULES
+        let sk2 = RejRestSkip2;
+        scan_right(&mut r, sk2, rule_all);
+        r.add(sk2, Hash, RejRestState, Hash, Dir::Right);
     }
     {
         let rs = RejRestState;
@@ -1729,46 +1585,465 @@ fn build_utm_rules() -> RuleSet {
 // build_utm_spec: Assemble the full TuringMachineSpec for the UTM
 // ════════════════════════════════════════════════════════════════════
 
-pub static UTM_SPEC: LazyLock<SimpleTuringMachineSpec<State, Symbol>> = LazyLock::new(|| {
+pub type MyUtmSpec = SimpleTuringMachineSpec<State, Symbol>;
+impl UtmSpec for MyUtmSpec {
+    type Encoder<'a, Guest: 'a + TuringMachineSpec> = MyUtmSpecOptimizationHints<'a, Guest>;
+    fn encoder<'a, Guest: 'a + TuringMachineSpec>(
+        &self,
+        tm: &'a Guest,
+    ) -> Self::Encoder<'a, Guest> {
+        MyUtmSpecOptimizationHints::guess(tm)
+    }
+
+    fn is_tick_boundary(&self, prev_state: State, state: State) -> bool {
+        prev_state != state && state == State::DoneSeekHome
+    }
+}
+
+/// Step a UTM until `is_tick_boundary` fires (or it halts).
+/// Takes at least one step before checking.
+/// Returns Ok(num_steps) on tick, Err on halt or step limit.
+#[allow(dead_code)]
+pub fn run_until_inner_step<Spec: UtmSpec>(
+    spec: &Spec,
+    tm: &mut RunningTuringMachine<Spec>,
+    max_steps: usize,
+) -> Result<usize, crate::tm::RunUntilResult> {
+    use crate::tm::{step, RunUntilResult, RunningTMStatus};
+
+    let mut prev_state = tm.state;
+
+    for step_count in 1..=max_steps {
+        if tm.pos >= tm.tape.len() {
+            tm.tape.resize(tm.pos + 1, spec.blank());
+        }
+        match step(tm) {
+            RunningTMStatus::Running => {
+                if tm.pos >= tm.tape.len() {
+                    tm.tape.resize(tm.pos + 1, spec.blank());
+                }
+                if spec.is_tick_boundary(prev_state, tm.state) {
+                    return Ok(step_count);
+                }
+                prev_state = tm.state;
+            }
+            RunningTMStatus::Accepted => {
+                return Err(RunUntilResult::Accepted {
+                    num_steps: step_count,
+                });
+            }
+            RunningTMStatus::Rejected => {
+                return Err(RunUntilResult::Rejected {
+                    num_steps: step_count,
+                });
+            }
+        }
+    }
+    Err(RunUntilResult::StepLimit)
+}
+
+#[derive(Clone)]
+pub struct MyUtmSpecOptimizationHints<'a, Guest: 'a + TuringMachineSpec> {
+    pub guest: &'a Guest,
+    pub rules: Vec<GuestRule<Guest::State, Guest::Symbol>>,
+    pub state_encodings: BTreeMap<Guest::State, Bitstring>,
+    pub symbol_encodings: BTreeMap<Guest::Symbol, Bitstring>,
+    pub transition_stats: BTreeMap<(Guest::State, Guest::Symbol), usize>,
+}
+
+impl<'a, Guest: 'a + TuringMachineSpec> Encoder<'a, Symbol, Guest>
+    for MyUtmSpecOptimizationHints<'a, Guest>
+{
+    fn encode(&self, guest: &RunningTuringMachine<Guest>) -> Vec<Symbol> {
+        if self.state_encodings.len() != guest.spec.iter_states().count() {
+            panic!("state encodings length mismatch");
+        }
+        if self.symbol_encodings.len() != guest.spec.iter_symbols().count() {
+            panic!("symbol encodings length mismatch");
+        }
+
+        let all_rules: Vec<_> = guest.spec.iter_rules().collect();
+
+        let mut tape: Vec<Symbol> = Vec::new();
+        tape.push(Symbol::Dollar);
+
+        // Layout: $ ACCEPT # BLANK # RULES # STATE # TAPE
+
+        // ACCEPT section (right after $)
+        for (i, state) in guest
+            .spec
+            .iter_states()
+            .filter(|s| guest.spec.is_accepting(*s))
+            .enumerate()
+        {
+            if i > 0 {
+                tape.push(Symbol::Semi);
+            }
+            tape.extend(bitstring_to_symbols(&self.state_encodings[&state]));
+        }
+
+        // BLANK section
+        tape.push(Symbol::Hash);
+        tape.extend(bitstring_to_symbols(
+            &self.symbol_encodings[&guest.spec.blank()],
+        ));
+
+        // RULES section: # .rule1 ; .rule2 ; .rule3 ...
+        tape.push(Symbol::Hash);
+        let guest_rules = group_rules(&all_rules, &self.transition_stats);
+        tape.extend(serialize_rules(
+            &guest_rules,
+            &self.state_encodings,
+            &self.symbol_encodings,
+        ));
+
+        // STATE section
+        tape.push(Symbol::Hash);
+        tape.extend(bitstring_to_symbols(&self.state_encodings[&guest.state]));
+
+        // TAPE section
+        tape.push(Symbol::Hash);
+
+        let caret_pos = tape.len();
+
+        let default_tape = vec![guest.spec.blank()];
+        let nonempty_guest_tape = if guest.tape.is_empty() {
+            &default_tape
+        } else {
+            &guest.tape
+        };
+        for sym in nonempty_guest_tape {
+            tape.push(Symbol::Comma);
+            tape.extend(bitstring_to_symbols(&self.symbol_encodings[&sym]));
+        }
+        tape[caret_pos] = Symbol::Caret;
+
+        tape
+    }
+    fn decode(&self, tape: &[Symbol]) -> Result<RunningTuringMachine<'a, Guest>, String> {
+        let guest_states: Vec<Guest::State> = self.guest.iter_states().collect();
+        let guest_symbols: Vec<Guest::Symbol> = self.guest.iter_symbols().collect();
+
+        let n_state_bits = num_bits(guest_states.len());
+        let n_sym_bits = num_bits(guest_symbols.len());
+
+        // Find the sections separated by #
+        // Layout: $ ACC #[0] BLANK #[1] RULES #[2] STATE #[3] TAPE
+        let mut hashes: Vec<usize> = Vec::new();
+        for (i, &s) in tape.iter().enumerate() {
+            if s == Symbol::Hash {
+                hashes.push(i);
+            }
+        }
+
+        if hashes.len() < 4 {
+            return Err(format!(
+                "expected at least 4 # delimiters, found {}",
+                hashes.len()
+            ));
+        }
+
+        let state_start = hashes[2] + 1;
+        let state = guest_states[from_binary_at(tape, state_start, n_state_bits)];
+
+        let tape_start = hashes[3] + 1;
+        let tape_end = tape.len();
+
+        let tape_section = &tape[tape_start..tape_end];
+        let mut cells: Vec<usize> = Vec::new();
+        let mut head_pos: usize = 0;
+        let mut i = 0;
+        let mut cell_idx = 0;
+        while i < tape_section.len() {
+            let s = tape_section[i];
+            if s == Symbol::Blank || s == Symbol::Dollar {
+                break;
+            }
+            if s == Symbol::Comma {
+                i += 1;
+                cell_idx += 1;
+                continue;
+            }
+            if s == Symbol::Caret || s == Symbol::Gt {
+                if s == Symbol::Caret {
+                    head_pos = cell_idx;
+                }
+                i += 1;
+                continue;
+            }
+            if i + n_sym_bits > tape_section.len() {
+                break;
+            }
+            let val = from_binary_at(tape_section, i, n_sym_bits);
+            cells.push(val);
+            i += n_sym_bits;
+        }
+
+        Ok(RunningTuringMachine {
+            spec: self.guest,
+            state,
+            pos: head_pos,
+            tape: cells.iter().map(|&i| guest_symbols[i]).collect(),
+        })
+    }
+}
+
+impl<'a, Guest: 'a + TuringMachineSpec> MyUtmSpecOptimizationHints<'a, Guest> {
+    pub fn guess(guest: &'a Guest) -> Self {
+        Self::from_transition_stats(&guest, &BTreeMap::new())
+    }
+    pub fn from_transition_stats(
+        guest: &'a Guest,
+        transition_stats: &BTreeMap<(Guest::State, Guest::Symbol), usize>,
+    ) -> Self {
+        let rules = group_rules(&guest.iter_rules().collect::<Vec<_>>(), transition_stats);
+
+        let n_state_bits = num_bits(guest.iter_states().count());
+        let n_sym_bits = num_bits(guest.iter_symbols().count());
+        let state_encodings = guest
+            .iter_states()
+            .enumerate()
+            .map(|(i, s)| (s, to_binary(i, n_state_bits)))
+            .collect();
+        let symbol_encodings = guest
+            .iter_symbols()
+            .enumerate()
+            .map(|(i, s)| (s, to_binary(i, n_sym_bits)))
+            .collect();
+
+        Self {
+            guest,
+            rules,
+            state_encodings,
+            symbol_encodings,
+            transition_stats: transition_stats.clone(),
+        }
+    }
+}
+
+/// A rule in the encoded guest program, using encoded indices.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GuestRule<GState, GSymbol> {
+    /// Normal rule: state | sym | new_state | new_sym | dir
+    Single {
+        state: GState,
+        sym: GSymbol,
+        new_state: GState,
+        new_sym: GSymbol,
+        dir: Dir,
+    },
+    /// Compact noop rule: state , sym1 , sym2 , ... | dir
+    /// All listed symbols leave state and symbol unchanged, just move.
+    NoopGroup {
+        state: GState,
+        syms: Vec<GSymbol>,
+        dir: Dir,
+    },
+}
+
+/// Compute minimal prefix-compressed binary representations for a set of symbol indices.
+///
+/// Given a set of indices and a bit width, returns a list of binary prefixes (each
+/// potentially shorter than `n_bits`) that exactly cover the input set. For example,
+/// with `n_bits=4`, indices `{0,1,2,3,4,5,6,7,8,9,10}` compress to prefixes
+/// `["0", "100", "1010"]` because all 8 values starting with `0` are present,
+/// both values starting with `100` are present, and `1010` stands alone.
+pub fn compress_prefixes<GSymbol: Ord>(
+    syms: &[GSymbol],
+    symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
+) -> Vec<Bitstring>
+where
+    GSymbol: Eq + Ord + Copy,
+{
+    let target_encodings: BTreeSet<&Bitstring> =
+        syms.iter().map(|s| &symbol_encodings[s]).collect();
+    let non_target_encodings: Vec<&Bitstring> = symbol_encodings
+        .iter()
+        .filter(|(k, _)| !syms.contains(k))
+        .map(|(_, v)| v)
+        .collect();
+
+    let mut result = Vec::new();
+    compress_prefixes_rec(&target_encodings, &non_target_encodings, &[], &mut result);
+    result.sort_by_key(|p| p.len());
+    result
+}
+
+fn compress_prefixes_rec(
+    targets: &BTreeSet<&Bitstring>,
+    non_targets: &[&Bitstring],
+    prefix: &[bool],
+    result: &mut Vec<Bitstring>,
+) {
+    // Count how many target encodings start with this prefix
+    let target_count = targets.iter().filter(|enc| enc.starts_with(prefix)).count();
+    if target_count == 0 {
+        return;
+    }
+
+    // Check if any non-target encoding starts with this prefix
+    let has_non_target = non_targets.iter().any(|enc| enc.starts_with(prefix));
+    if !has_non_target {
+        // This prefix covers only target encodings — emit it
+        result.push(prefix.to_vec());
+        return;
+    }
+
+    // Recurse into 0 and 1 children
+    for bit in [false, true] {
+        let mut child_prefix = prefix.to_vec();
+        child_prefix.push(bit);
+        compress_prefixes_rec(targets, non_targets, &child_prefix, result);
+    }
+}
+
+impl<GState: Eq + Ord + Copy, GSymbol: Eq + Ord + Copy> GuestRule<GState, GSymbol> {
+    /// Serialize this rule into UTM tape symbols.
+    pub fn serialize(
+        &self,
+        state_encodings: &BTreeMap<GState, Bitstring>,
+        symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
+    ) -> Vec<Symbol> {
+        let mut out = Vec::new();
+        match self {
+            GuestRule::Single {
+                state,
+                sym,
+                new_state,
+                new_sym,
+                dir,
+            } => {
+                out.push(Symbol::Dot);
+                out.extend(bitstring_to_symbols(&state_encodings[state]));
+                out.push(Symbol::Pipe);
+                out.extend(bitstring_to_symbols(&symbol_encodings[sym]));
+                out.push(Symbol::Pipe);
+                out.extend(bitstring_to_symbols(&state_encodings[new_state]));
+                out.push(Symbol::Pipe);
+                out.extend(bitstring_to_symbols(&symbol_encodings[new_sym]));
+                out.push(Symbol::Pipe);
+                out.push(match dir {
+                    Dir::Left => Symbol::L,
+                    Dir::Right => Symbol::R,
+                });
+            }
+            GuestRule::NoopGroup { state, syms, dir } => {
+                out.push(Symbol::Dot);
+                out.extend(bitstring_to_symbols(&state_encodings[state]));
+                let prefixes = compress_prefixes(syms, symbol_encodings);
+                for prefix in &prefixes {
+                    out.push(Symbol::Comma);
+                    out.extend(bitstring_to_symbols(prefix));
+                }
+                out.push(Symbol::Pipe);
+                out.push(match dir {
+                    Dir::Left => Symbol::L,
+                    Dir::Right => Symbol::R,
+                });
+            }
+        }
+        out
+    }
+}
+
+/// Serialize a list of GuestRules into the RULES section content (without surrounding #).
+pub fn serialize_rules<GState: Eq + Copy + Ord, GSymbol: Eq + Copy + Ord>(
+    rules: &[GuestRule<GState, GSymbol>],
+    state_encodings: &BTreeMap<GState, Bitstring>,
+    symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
+) -> Vec<Symbol> {
+    let mut tape = Vec::new();
+    for (i, rule) in rules.iter().enumerate() {
+        if i > 0 {
+            tape.push(Symbol::Semi);
+        }
+        tape.extend(rule.serialize(state_encodings, symbol_encodings));
+    }
+    tape
+}
+
+/// Group guest rules into GuestRules, consolidating noops, and sort by transition frequency.
+///
+/// A noop rule is one where new_state == state and new_sym == sym.
+/// Noop rules for the same (state, direction) are grouped into a single NoopGroup.
+/// The resulting Vec is sorted by ascending sum of transition stat counts,
+/// so the UTM (which scans rules right-to-left) finds frequent rules first.
+pub fn group_rules<GState, GSymbol>(
+    rules: &[(GState, GSymbol, GState, GSymbol, Dir)],
+    transition_stats: &BTreeMap<(GState, GSymbol), usize>,
+) -> Vec<GuestRule<GState, GSymbol>>
+where
+    GState: Eq + Ord + Copy,
+    GSymbol: Eq + Ord + Copy,
+{
+    // Identify noop rules and group by (state_encoding, dir)
+    let mut noop_groups: BTreeMap<(GState, Dir), Vec<GSymbol>> = BTreeMap::new();
+    let mut noop_set: BTreeSet<(GState, GSymbol)> = BTreeSet::new();
+    // Track Guest-typed keys per noop group for stat lookups
+    let mut noop_group_keys: BTreeMap<(GState, Dir), Vec<(GState, GSymbol)>> = BTreeMap::new();
+
+    for &(st, sym, nst, nsym, dir) in rules {
+        if nst == st && nsym == sym {
+            noop_groups.entry((st, dir)).or_default().push(sym);
+            noop_set.insert((st, sym));
+            noop_group_keys
+                .entry((st, dir))
+                .or_default()
+                .push((st, sym));
+        }
+    }
+
+    // Build result: one entry per noop group, one per non-noop rule
+    let mut emitted_noop_groups: BTreeSet<(GState, Dir)> = BTreeSet::new();
+    let mut result: Vec<(GuestRule<GState, GSymbol>, usize)> = Vec::new();
+
+    for &(st, sym, nst, nsym, dir) in rules {
+        let count = *transition_stats.get(&(st, sym)).unwrap_or(&0);
+        if noop_set.contains(&(st, sym)) {
+            let key = (st, dir);
+            if emitted_noop_groups.contains(&key) {
+                continue;
+            }
+            emitted_noop_groups.insert(key);
+            let syms = noop_groups[&key].clone();
+            let group_count: usize = noop_group_keys[&key]
+                .iter()
+                .map(|k| transition_stats.get(k).unwrap_or(&0))
+                .sum();
+            result.push((
+                GuestRule::NoopGroup {
+                    state: st,
+                    syms,
+                    dir,
+                },
+                group_count,
+            ));
+        } else {
+            result.push((
+                GuestRule::Single {
+                    state: st,
+                    sym: sym,
+                    new_state: nst,
+                    new_sym: nsym,
+                    dir,
+                },
+                count,
+            ));
+        }
+    }
+
+    // Sort ascending by count so most-used rules end up rightmost (found first by UTM)
+    result.sort_by_key(|&(_, count)| count);
+    result.into_iter().map(|(rule, _)| rule).collect()
+}
+
+pub fn make_utm_spec() -> MyUtmSpec {
     SimpleTuringMachineSpec {
         initial: State::Init,
-        accepting: HashSet::from([State::Accept]),
+        accepting: BTreeSet::from([State::Accept]),
         blank: Symbol::Blank,
         transitions: build_utm_rules().0,
         all_states: ALL_STATES.to_vec(),
         all_symbols: ALL_SYMBOLS.to_vec(),
     }
-
-    // SmallTuringMachineSpec {
-    //     n_states: N_UTM_STATES,
-    //     n_symbols: N_SYMBOLS,
-    //     initial: SmallTmState(State::Init.0),
-    //     accept: SmallTmState(State::Accept.0),
-    //     blank: SmallTmSymbol(Symbol::Blank.0),
-    //     transitions: {
-    //         let mut transitions = [None; 65536];
-    //         for (st, sym, nst, nsym, dir) in r.ordered {
-    //             transitions[((st.0 as usize) << 8) | (sym.0 as usize)] =
-    //                 Some((SmallTmState(nst.0), SmallTmSymbol(nsym.0), dir));
-    //         }
-    //         transitions
-    //     },
-    //     state_names: STATE_NAMES.to_vec(),
-    //     symbol_names: SYMBOL_NAMES.to_vec(),
-    // }
-});
-
-pub fn encode_tape<GuestSymbol: PartialEq + Eq + Hash>(
-    guest_sym_to_idx: &HashMap<GuestSymbol, usize>,
-    tape: &[GuestSymbol],
-) -> Vec<Symbol> {
-    let n_bits = num_bits(guest_sym_to_idx.len());
-
-    let mut res = Vec::new();
-    for sym in tape {
-        res.push(Symbol::Comma);
-        res.extend_from_slice(&to_binary(guest_sym_to_idx[sym], n_bits));
-    }
-
-    res
 }

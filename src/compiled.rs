@@ -1,10 +1,11 @@
 use std::collections::HashMap;
 
+use crate::gen_utm::UtmSpec;
 use crate::tm::{Dir, RunningTuringMachine, TuringMachineSpec};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct CState(pub u8);
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct CSymbol(pub u8);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -168,9 +169,19 @@ impl<'a, Guest: TuringMachineSpec> CompiledTuringMachineSpec<'a, Guest> {
     }
 }
 
+impl<'a, Guest: UtmSpec> CompiledTuringMachineSpec<'a, Guest> {
+    pub fn is_tick_boundary(&self, old_state: CState, state: CState) -> bool {
+        self.guest
+            .is_tick_boundary(self.decompile_state(old_state), self.decompile_state(state))
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{tm::run_tm, toy_machines::CHECK_PALINDROME_SPEC};
+    use crate::{
+        optimization_hints::make_my_utm_self_optimization_hints, tm::run_tm,
+        toy_machines::CHECK_PALINDROME_SPEC, utm::make_utm_spec,
+    };
 
     use super::*;
 
@@ -195,14 +206,14 @@ mod tests {
     fn compiled_extender_run_matches_interpreted() {
         use crate::infinity::InfiniteTape;
         use crate::tm::step;
-        use crate::utm::UTM_SPEC;
 
-        let utm = &*UTM_SPEC;
-        let compiled = CompiledTuringMachineSpec::compile(utm).unwrap();
-        let background = InfiniteTape::new();
+        let utm_spec = make_utm_spec();
+        let encoder = make_my_utm_self_optimization_hints(&utm_spec);
+        let compiled = CompiledTuringMachineSpec::compile(&utm_spec).unwrap();
+        let background = InfiniteTape::new(&encoder);
 
         // Interpreted: run 1000 steps with InfiniteTape
-        let mut interp_tm = RunningTuringMachine::new(utm);
+        let mut interp_tm = RunningTuringMachine::new(&utm_spec);
         for _ in 0..1000 {
             if interp_tm.pos >= interp_tm.tape.len() {
                 background.extend(&mut interp_tm.tape, interp_tm.pos + 1);

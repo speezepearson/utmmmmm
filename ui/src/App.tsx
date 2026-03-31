@@ -1,12 +1,13 @@
 import "./App.css";
 import { TowerView } from "./TowerView";
 import { WelcomeModal } from "./WelcomeModal";
+import { utmSpec } from "./parseSpec";
 
 function App() {
   return (
     <>
       <WelcomeModal />
-      <TowerView />
+      <TowerView stateDescriptions={utmSpec.stateDescriptions} />
     </>
   );
 }

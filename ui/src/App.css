@@ -1,3 +1,9 @@
+.aside {
+  margin: 0 1em;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
 .tm-viewer {
   text-align: left;
 }
@@ -31,6 +37,7 @@
 
 .tm-controls {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   margin-top: 8px;

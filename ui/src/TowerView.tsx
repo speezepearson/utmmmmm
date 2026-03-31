@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 export interface UtmMeta {
   utmStates: string[];
@@ -7,13 +7,14 @@ export interface UtmMeta {
 }
 
 import { colorizeTape } from "./colorizeTape";
+import { State, Symbol } from "./types";
 
 // ── L0 state from server ──
 
 interface TowerLevel {
   steps: number;
   maxHeadPos: number;
-  state: string;
+  state: State;
   headPos: number;
   tape: string[];
 }
@@ -21,15 +22,15 @@ interface TowerLevel {
 const TotalEvent = z.object({
   type: z.literal("total"),
   unblemished: z.string(),
-  utm_states: z.array(z.string()),
+  utm_states: z.array(State),
   utm_symbol_chars: z.string(),
   levels: z.array(
     z.object({
       steps: z.number(),
       max_head_pos: z.number(),
-      state: z.string(),
+      state: State,
       head_pos: z.number(),
-      overwrites: z.record(z.number(), z.string()),
+      overwrites: z.record(z.number(), Symbol),
     }),
   ),
 });
@@ -40,9 +41,9 @@ const DeltaEvent = z.object({
     z.object({
       steps: z.number(),
       max_head_pos: z.number(),
-      state: z.string(),
+      state: State,
       head_pos: z.number(),
-      overwrites: z.record(z.number(), z.string()),
+      overwrites: z.record(z.number(), Symbol),
     }),
   ),
 });
@@ -62,9 +63,9 @@ function useSseTower(): {
 
   const [emptyLevel, setEmptyLevel] = useState<TowerLevel>({
     headPos: 0,
-    state: "Init",
+    state: State.parse("Init"),
     steps: 0,
-    tape: [],
+    tape: ["$"],
     maxHeadPos: 0,
   });
 
@@ -100,7 +101,7 @@ function useSseTower(): {
           setTower(towerRef.current);
           setEmptyLevel((l) => ({
             ...l,
-            tape: unblemishedRef.current.slice(0, 200),
+            tape: unblemishedRef.current.slice(0, 1),
           }));
           break;
         }
@@ -149,7 +150,38 @@ function useSseTower(): {
   };
 }
 
-function TowerLevelView({ level, name }: { level: TowerLevel; name: string }) {
+function toExponential(
+  x: number,
+  nDecimal: number,
+): { mantissa: string; exponent: number } {
+  const exponent = 3 * Math.floor(Math.log10(x) / 3);
+  const mantissa = x / 10 ** exponent;
+  return { mantissa: mantissa.toFixed(nDecimal), exponent };
+}
+
+function TowerLevelView({
+  level,
+  name,
+  stateDescriptions,
+}: {
+  level: TowerLevel;
+  name: string;
+  stateDescriptions: Record<State, string>;
+}) {
+  const fontSize = useMemo(() => {
+    return `${Math.min(1, Math.max(0.2, Math.pow(7000 / level.tape.length, 2)))}em`;
+  }, [level.tape.length]);
+
+  const prettyNSteps = useMemo(() => {
+    if (level.steps < 1000) return level.steps;
+    const { mantissa, exponent } = toExponential(level.steps, 2);
+    return (
+      <>
+        {mantissa} x 10<sup>{exponent}</sup>
+      </>
+    );
+  }, [level.steps]);
+
   return (
     <div
       style={{
@@ -168,20 +200,23 @@ function TowerLevelView({ level, name }: { level: TowerLevel; name: string }) {
         }}
       >
         {name} &middot;{" "}
-        <span style={{ fontFamily: "monospace" }}>{level.steps}</span> steps
-        &middot; <span style={{ fontFamily: "monospace" }}>{level.state}</span>
+        <span style={{ fontFamily: "monospace" }}>{prettyNSteps}</span> step
+        {level.steps === 1 ? "" : "s"}
+        &middot;{" "}
+        <span style={{ fontFamily: "monospace" }}>
+          {stateDescriptions[level.state] ?? level.state}
+        </span>
       </div>
       <div
         style={{
           fontFamily: "var(--mono)",
-          fontSize: "12px",
           lineHeight: "1.3",
           overflowWrap: "break-word",
+          fontSize,
         }}
         dangerouslySetInnerHTML={{
           __html:
-            colorizeTape(level.tape, level.headPos) +
-            " &nbsp;&nbsp;&nbsp; and so on",
+            colorizeTape(level.tape, level.headPos) + " &nbsp;&nbsp;&nbsp; ...",
         }}
       />
     </div>
@@ -190,7 +225,11 @@ function TowerLevelView({ level, name }: { level: TowerLevel; name: string }) {
 
 // ── Main component ──
 
-export function TowerView() {
+export function TowerView({
+  stateDescriptions,
+}: {
+  stateDescriptions: Record<State, string>;
+}) {
   const { meta, tower, emptyLevel } = useSseTower();
 
   if (!meta || !tower) {
@@ -201,13 +240,19 @@ export function TowerView() {
     <div style={{ textAlign: "left", padding: "16px" }}>
       <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
         {[...tower].map((level, i) => (
-          <TowerLevelView key={i} level={level} name={`L${i}`} />
+          <TowerLevelView
+            key={i}
+            level={level}
+            name={`L${i}`}
+            stateDescriptions={stateDescriptions}
+          />
         ))}
         {Array.from({ length: 5 }).map((_, i) => (
           <TowerLevelView
             key={i}
             level={emptyLevel}
             name={`L${i + tower.length}`}
+            stateDescriptions={stateDescriptions}
           />
         ))}
         <div
@@ -227,7 +272,7 @@ export function TowerView() {
               overflowWrap: "break-word",
             }}
           >
-            and so on
+            ...
           </div>
         </div>
       </div>

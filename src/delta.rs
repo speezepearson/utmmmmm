@@ -4,10 +4,7 @@ use crate::infinity::InfiniteTape;
 use crate::utm::Symbol;
 
 /// Compute the current set of overwrites (positions differing from background).
-pub fn current_overwrites(
-    tape: &[Symbol],
-    background: &InfiniteTape,
-) -> HashMap<usize, Symbol> {
+pub fn current_overwrites(tape: &[Symbol], background: &InfiniteTape) -> HashMap<usize, Symbol> {
     tape.iter()
         .zip(background.iter_forever())
         .enumerate()
@@ -54,11 +51,16 @@ pub fn compute_new_overwrites(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::utm::Symbol;
+    use crate::{
+        optimization_hints::make_my_utm_self_optimization_hints,
+        utm::{make_utm_spec, Symbol},
+    };
 
     #[test]
     fn test_total_then_two_deltas() {
-        let background = InfiniteTape::new();
+        let spec = make_utm_spec();
+        let encoder = make_my_utm_self_optimization_hints(&spec);
+        let background = InfiniteTape::new(&encoder);
 
         // === Total event: tape has position 1 changed to X ===
         let mut tape = vec![];
