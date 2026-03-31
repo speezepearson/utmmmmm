@@ -490,10 +490,8 @@ const ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R: [Symbol; 8] = [
 /// groups of scan-rules with prefixes.
 const X_Y_STAR_GT: [Symbol; 4] = [Symbol::X, Symbol::Y, Symbol::Star, Symbol::Gt];
 
-const ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT: [Symbol; 12] = const_concat!(
-    ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R,
-    X_Y_STAR_GT
-);
+const ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT: [Symbol; 12] =
+    const_concat!(ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R, X_Y_STAR_GT);
 
 const ALL_SYMBOLS: [Symbol; 16] = const_concat!(
     ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT,
@@ -1343,9 +1341,23 @@ fn build_utm_rules() -> RuleSet {
     // PHASE 7: SEEK HOME AND RESTART
     // ══════════════════════════════════════════════════════════════
     {
-        scan_left(&mut r, DoneSeekHome, &const_concat!(ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT, [Caret]));
-        r.add(DoneSeekHome, Hash, DoneSeekHomeThroughState, Hash, Dir::Left);
-        scan_left(&mut r, DoneSeekHomeThroughState, &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT);
+        scan_left(
+            &mut r,
+            DoneSeekHome,
+            &const_concat!(ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT, [Caret]),
+        );
+        r.add(
+            DoneSeekHome,
+            Hash,
+            DoneSeekHomeThroughState,
+            Hash,
+            Dir::Left,
+        );
+        scan_left(
+            &mut r,
+            DoneSeekHomeThroughState,
+            &ZERO_ONE_DOT_PIPE_SEMI_COMMA_L_R_X_Y_STAR_GT,
+        );
         r.add(DoneSeekHomeThroughState, Hash, MarkRule, Hash, Dir::Left);
     }
 
