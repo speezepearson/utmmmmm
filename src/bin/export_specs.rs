@@ -1,6 +1,8 @@
 use serde::Serialize;
 use utmmmmm::gen_utm::{Encoder, UtmSpec as _};
-use utmmmmm::json_export::{export_spec, export_spec_with_clusters, JsonTuringMachineSpec};
+use utmmmmm::json_export::{
+    export_spec, export_spec_with_clusters, GraphCluster, JsonTuringMachineSpec,
+};
 use utmmmmm::optimization_hints::make_my_utm_self_optimization_hints;
 use utmmmmm::tm::RunningTuringMachine;
 use utmmmmm::toy_machines::*;
@@ -55,6 +57,52 @@ fn utm_cluster_for(state_name: &str) -> Option<(String, String)> {
     Some((id.to_string(), label.to_string()))
 }
 
+/// Add meta-clusters and parent relationships to the UTM graph.
+/// Tree structure:
+///   init
+///   find_rule  { mark_rule, cmp_state, cmp_sym { noop } }
+///   apply_rule { cp_nst, cp_nsym, read_dir, seek_home, move_head { move_left, move_right } }
+///   halt       { chk_acc, accept, reject }
+fn add_utm_cluster_hierarchy(spec: &mut JsonTuringMachineSpec) {
+    // Define meta-clusters (id, label, children)
+    let meta: &[(&str, &str, &[&str])] = &[
+        ("find_rule", "Find Rule", &["mark_rule", "cmp_state", "cmp_sym"]),
+        ("apply_rule", "Apply Rule", &["cp_nst", "cp_nsym", "read_dir", "seek_home", "move_head"]),
+        ("move_head", "Move Head", &["move_left", "move_right"]),
+        ("halt", "Halt", &["chk_acc", "accept", "reject"]),
+    ];
+
+    // Also nest noop under cmp_sym
+    let nesting: &[(&str, &str)] = &[("noop", "cmp_sym")];
+
+    // Add meta-cluster nodes
+    for &(id, label, _) in meta {
+        spec.graph.clusters.push(GraphCluster {
+            id: id.to_string(),
+            label: label.to_string(),
+            parent: None,
+        });
+    }
+
+    // Set parent for children of meta-clusters
+    for &(meta_id, _, children) in meta {
+        for &child_id in children {
+            if let Some(c) = spec.graph.clusters.iter_mut().find(|c| c.id == child_id) {
+                c.parent = Some(meta_id.to_string());
+            }
+        }
+    }
+
+    // Set additional nesting
+    for &(child_id, parent_id) in nesting {
+        if let Some(c) = spec.graph.clusters.iter_mut().find(|c| c.id == child_id) {
+            c.parent = Some(parent_id.to_string());
+        }
+    }
+
+    // move_head is itself a child of apply_rule (already set above since it's in apply_rule's children)
+}
+
 #[derive(Serialize)]
 struct RustExport {
     #[serde(rename = "machineSpecs")]
@@ -80,7 +128,7 @@ struct WelcomeModalExample {
 fn main() {
     let utm_spec = make_utm_spec();
 
-    let specs = vec![
+    let mut specs = vec![
         export_spec(
             &*ACCEPT_IMMEDIATELY_SPEC,
             "Accept Immediately",
@@ -417,6 +465,11 @@ fn main() {
         ),
     ];
 
+    // Add nested cluster hierarchy to the UTM spec
+    if let Some(utm) = specs.iter_mut().find(|s| s.name == "Universal Turing Machine") {
+        add_utm_cluster_hierarchy(utm);
+    }
+
     // Build welcome modal example tapes
     // bitFlipperInput: the flip-bits machine's own initial tape (display symbols)
     let flip_bits_tape = {
@@ -484,7 +537,7 @@ fn main() {
     );
 
     // For the UTM spec in welcome modal, reuse the same export logic
-    let utm_spec_export = export_spec_with_clusters(
+    let mut utm_spec_export = export_spec_with_clusters(
         &utm_spec,
         "Universal Turing Machine",
         "A universal Turing machine that can simulate any other TM given an encoded description on its tape.",
@@ -514,6 +567,7 @@ fn main() {
         },
         |s| utm_cluster_for(&format!("{:?}", s)),
     );
+    add_utm_cluster_hierarchy(&mut utm_spec_export);
 
     let _ = (bit_flipper_idx, utm_idx); // suppress unused warnings
 

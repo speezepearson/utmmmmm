@@ -24,10 +24,14 @@ export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
 
     const elements: cytoscape.ElementDefinition[] = [];
 
-    // Compound (parent) nodes for clusters
+    // Compound (parent) nodes for clusters, supporting nesting
     for (const cluster of graph.clusters) {
       elements.push({
-        data: { id: `cluster-${cluster.id}`, label: cluster.label },
+        data: {
+          id: `cluster-${cluster.id}`,
+          label: cluster.label,
+          parent: cluster.parent ? `cluster-${cluster.parent}` : undefined,
+        },
         classes: "cluster",
       });
     }

@@ -24,6 +24,7 @@ const GraphEdgeSchema = z.object({
 const GraphClusterSchema = z.object({
   id: z.string(),
   label: z.string(),
+  parent: z.string().optional(),
 });
 
 const GraphSpecSchema = z.object({

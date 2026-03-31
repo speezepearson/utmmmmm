@@ -29,6 +29,8 @@ pub struct GraphEdge {
 pub struct GraphCluster {
     pub id: String,
     pub label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub parent: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -147,7 +149,11 @@ pub fn export_spec_with_clusters<Spec: TuringMachineSpec>(
 
     let clusters: Vec<GraphCluster> = seen_clusters
         .into_iter()
-        .map(|(id, label)| GraphCluster { id, label })
+        .map(|(id, label)| GraphCluster {
+            id,
+            label,
+            parent: None,
+        })
         .collect();
 
     // Group edges: for each rule, compute the "right side" of the arrow label.
