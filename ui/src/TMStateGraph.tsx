@@ -180,7 +180,6 @@ export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
           id: node.id,
           label: node.label,
           parent: node.cluster ? `cluster-${node.cluster}` : undefined,
-          labelWidth: node.label.length * 7 + 16,
         },
       });
     }
@@ -210,15 +209,16 @@ export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
             "text-halign": "center",
             "font-size": "10px",
             "font-family": "ui-monospace, Consolas, monospace",
-            width: "data(labelWidth)",
-            height: 28,
+            width: "label",
+            height: "label",
             shape: "roundrectangle",
             "background-color": "#e2e8f0",
             "border-width": 1,
             "border-color": "#94a3b8",
             color: "#1e293b",
-            "text-wrap": "none",
-            padding: "4px",
+            "text-wrap": "wrap",
+            "text-max-width": "15em",
+            padding: "6px",
           },
         },
         {

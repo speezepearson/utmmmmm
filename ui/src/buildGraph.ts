@@ -43,6 +43,7 @@ export type ClusterConfig = {
 export function buildGraph(
   spec: TuringMachineSpec,
   clusterConfig?: ClusterConfig,
+  stateDescriptions?: Record<string, string>,
 ): GraphSpec {
   // -- Nodes --
   const seenClusters = new Map<string, string>(); // id -> label
@@ -52,7 +53,9 @@ export function buildGraph(
     if (cluster) {
       seenClusters.set(cluster.id, cluster.label);
     }
-    return { id: name, label: name, cluster: cluster?.id };
+    const desc = stateDescriptions?.[name];
+    const label = desc && desc !== name ? `${name}\n${desc}` : name;
+    return { id: name, label, cluster: cluster?.id };
   });
 
   // -- Clusters --

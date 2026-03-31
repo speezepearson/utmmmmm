@@ -34,8 +34,8 @@ export function TuringMachineViewer({
 
   // Build graph from spec (memoized on spec identity)
   const graph = useMemo(
-    () => buildGraph(snapshot.spec, clusterConfig),
-    [snapshot.spec, clusterConfig],
+    () => buildGraph(snapshot.spec, clusterConfig, stateDescriptions),
+    [snapshot.spec, clusterConfig, stateDescriptions],
   );
 
   return (
