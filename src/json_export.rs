@@ -17,13 +17,12 @@ pub struct GraphNode {
 
 #[derive(Serialize, Clone)]
 pub struct GraphEdge {
-    /// Unique id: "{source}--{symbol}"
     pub id: String,
     pub source: String,
     pub target: String,
     pub label: String,
-    /// The triggering symbol (display char), for highlighting the active edge.
-    pub symbol: String,
+    /// The triggering symbols (display chars), for highlighting the active edge.
+    pub symbols: Vec<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -151,7 +150,12 @@ pub fn export_spec_with_clusters<Spec: TuringMachineSpec>(
         .map(|(id, label)| GraphCluster { id, label })
         .collect();
 
-    let mut edges: Vec<GraphEdge> = Vec::new();
+    // Group edges: for each rule, compute the "right side" of the arrow label.
+    // If sym == nsym: abbreviated to just dir (e.g. "R")
+    // If sym != nsym: "nsym,dir" (e.g. "X,R")
+    // Then group by (source, target, right_side) and merge symbols on the left.
+    // key: (source, target, right_side) -> (Vec<display_char_symbol>, Vec<display_char_symbol_for_highlighting>)
+    let mut edge_groups: BTreeMap<(String, String, String), Vec<char>> = BTreeMap::new();
     for (st, sym, nst, nsym, dir) in spec.iter_rules() {
         let dir_str = match dir {
             Dir::Left => "L",
@@ -159,15 +163,31 @@ pub fn export_spec_with_clusters<Spec: TuringMachineSpec>(
         };
         let sc = symbol_char(sym);
         let nsc = symbol_char(nsym);
-        let label = format!("{}→{},{}", sc, nsc, dir_str);
-        edges.push(GraphEdge {
-            id: format!("{}--{}", state_name(st), sc),
-            source: state_name(st),
-            target: state_name(nst),
-            label,
-            symbol: sc.to_string(),
-        });
+        let right = if sym == nsym {
+            dir_str.to_string()
+        } else {
+            format!("{},{}", nsc, dir_str)
+        };
+        let key = (state_name(st), state_name(nst), right);
+        edge_groups.entry(key).or_default().push(sc);
     }
+
+    let edges: Vec<GraphEdge> = edge_groups
+        .into_iter()
+        .map(|((source, target, right), syms)| {
+            let left: String = syms.iter().collect();
+            let label = format!("{} → {}", left, right);
+            let id = format!("{}--{}", source, left);
+            let symbols = syms.iter().map(|c| c.to_string()).collect();
+            GraphEdge {
+                id,
+                source,
+                target,
+                label,
+                symbols,
+            }
+        })
+        .collect();
 
     let graph = GraphSpec {
         nodes,

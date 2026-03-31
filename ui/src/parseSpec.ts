@@ -18,7 +18,7 @@ const GraphEdgeSchema = z.object({
   source: z.string(),
   target: z.string(),
   label: z.string(),
-  symbol: z.string(),
+  symbols: z.array(z.string()),
 });
 
 const GraphClusterSchema = z.object({

@@ -53,7 +53,7 @@ export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
           source: edge.source,
           target: edge.target,
           label: edge.label,
-          symbol: edge.symbol,
+          symbols: edge.symbols,
         },
         classes: edge.source === edge.target ? "selfloop" : undefined,
       });
@@ -189,12 +189,13 @@ export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
       stateNode.addClass("active-state");
     }
 
-    // Highlight the edge about to be taken (match by source + symbol data)
+    // Highlight the edge about to be taken (match by source + symbols list)
     if (currentSymbol !== undefined) {
       const sym = String(currentSymbol);
       const st = String(currentState);
       cy.edges().forEach((edge) => {
-        if (edge.data("source") === st && edge.data("symbol") === sym) {
+        const syms: string[] = edge.data("symbols") ?? [];
+        if (edge.data("source") === st && syms.includes(sym)) {
           edge.addClass("active-edge");
         }
       });
