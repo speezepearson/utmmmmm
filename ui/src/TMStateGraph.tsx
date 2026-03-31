@@ -217,7 +217,7 @@ export function TMStateGraph({ graph, currentState, currentSymbol }: Props) {
             "border-color": "#94a3b8",
             color: "#1e293b",
             "text-wrap": "wrap",
-            "text-max-width": "15em",
+            "text-max-width": "7em",
             padding: "6px",
           },
         },
