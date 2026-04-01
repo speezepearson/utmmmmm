@@ -710,6 +710,10 @@ fn build_utm_rules() -> RuleSet {
         let smc = StMatchCleanup;
         r.add(smc, Zero, StmGoLeft, Zero, Dir::Left);
         r.add(smc, One, StmGoLeft, One, Dir::Left);
+        // Empty prefix: L/R (noop) or | (full rule) immediately after comma
+        r.add(smc, L, StmGoLeft, L, Dir::Left);
+        r.add(smc, R, StmGoLeft, R, Dir::Left);
+        r.add(smc, Pipe, StmGoLeft, Pipe, Dir::Left);
     }
     {
         let gl = StmGoLeft;
