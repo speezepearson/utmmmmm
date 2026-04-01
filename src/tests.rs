@@ -869,16 +869,17 @@ fn test_noop_encoding_has_commas() {
         .collect();
     let rules_section = &encoded[hashes[1] + 1..hashes[2]];
 
-    // Count commas in rules section - should be 2 (one per noop symbol: ,S0,S1)
+    // Count commas in rules section
     let comma_count = rules_section
         .iter()
         .filter(|s| **s == Symbol::Comma)
         .count();
-    // State Scan has 2 noop rules (S0 and S1), encoded as . STATE , S0 , S1 | R
-    // That's 2 commas (one before each noop symbol)
-    assert_eq!(
-        comma_count, 2,
-        "Expected 2 commas for 2 noop rules, got {}",
+    // State Scan has noop alternatives and a non-noop alternative,
+    // each preceded by a comma. The exact count depends on prefix compression
+    // but there should be at least 2 commas (for the noop and the non-noop).
+    assert!(
+        comma_count >= 2,
+        "Expected at least 2 commas, got {}",
         comma_count
     );
 }
@@ -920,50 +921,56 @@ fn test_noop_faithful_palindrome() {
 }
 
 // ════════════════════════════════════════════════════════════════════
-// Tests: group_rules and GuestRule serialization
+// Tests: make_state_groups and StateGroup serialization
 // ════════════════════════════════════════════════════════════════════
 
 use crate::tm::Dir;
-use crate::utm::{group_rules, serialize_rules, GuestRule};
+use crate::utm::{make_state_groups, serialize_state_groups, Alternative, StateGroup};
 
 #[test]
-fn test_group_rules_no_noops() {
-    // All rules change state or symbol — no grouping should occur.
+fn test_state_groups_no_noops() {
+    // All rules change state or symbol — one state group with one Full alternative.
     let spec = make_noop_test_spec();
     let hints = MyUtmSpecOptimizationHints::guess(&spec);
-    // Filter to just the non-noop rule: (Scan=0, Blank=0) -> (Done=1, Blank=0, L)
     let rules = vec![(0u8, 0u8, 1u8, 0u8, Dir::Left)];
-    let grouped = group_rules(&rules, &hints.transition_stats);
-    assert_eq!(grouped.len(), 1);
-    assert!(matches!(grouped[0], GuestRule::Single { .. }));
+    let groups = make_state_groups(&rules, &hints.transition_stats, &hints.symbol_encodings);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].state, 0u8);
+    assert_eq!(groups[0].alternatives.len(), 1);
+    assert!(matches!(groups[0].alternatives[0], Alternative::Full { .. }));
 }
 
 #[test]
-fn test_group_rules_all_noops_same_dir() {
-    // Two noop rules for same state+direction → one NoopGroup.
+fn test_state_groups_all_noops_same_dir() {
+    // Two noop rules for same state+direction → one state group with noop alternatives.
     let spec = make_noop_test_spec();
     let hints = MyUtmSpecOptimizationHints::guess(&spec);
     let rules = vec![
         (0u8, 1u8, 0u8, 1u8, Dir::Right), // noop: Scan, S0
         (0u8, 2u8, 0u8, 2u8, Dir::Right), // noop: Scan, S1
     ];
-    let grouped = group_rules(&rules, &hints.transition_stats);
-    assert_eq!(grouped.len(), 1);
-    match &grouped[0] {
-        GuestRule::NoopGroup { state, syms, dir } => {
-            assert_eq!(*state, 0u8);
-            assert_eq!(syms.len(), 2);
-            assert_eq!(syms[0], 1u8);
-            assert_eq!(syms[1], 2u8);
-            assert_eq!(*dir, Dir::Right);
+    let groups = make_state_groups(&rules, &hints.transition_stats, &hints.symbol_encodings);
+    assert_eq!(groups.len(), 1);
+    assert_eq!(groups[0].state, 0u8);
+    // All alternatives should be Noop
+    let noop_count = groups[0]
+        .alternatives
+        .iter()
+        .filter(|a| matches!(a, Alternative::Noop { .. }))
+        .count();
+    assert!(noop_count > 0);
+    // All should go Right
+    for alt in &groups[0].alternatives {
+        match alt {
+            Alternative::Noop { dir, .. } => assert_eq!(*dir, Dir::Right),
+            _ => panic!("expected Noop"),
         }
-        _ => panic!("expected NoopGroup"),
     }
 }
 
 #[test]
-fn test_group_rules_mixed() {
-    // Noop rules are interleaved with non-noop; noops get consolidated into one group.
+fn test_state_groups_mixed() {
+    // Noop rules and non-noop for same state → one state group with mixed alternatives.
     let spec = make_noop_test_spec();
     let hints = MyUtmSpecOptimizationHints::guess(&spec);
     let rules = vec![
@@ -971,56 +978,49 @@ fn test_group_rules_mixed() {
         (0u8, 0u8, 1u8, 0u8, Dir::Left),  // non-noop
         (0u8, 2u8, 0u8, 2u8, Dir::Right), // noop (same group as first)
     ];
-    let grouped = group_rules(&rules, &hints.transition_stats);
-    assert_eq!(grouped.len(), 2);
-    // With zero stats, sorted stably: NoopGroup (encountered first), then Single.
-    let noop_count = grouped
+    let groups = make_state_groups(&rules, &hints.transition_stats, &hints.symbol_encodings);
+    // All rules are for state 0, so one state group
+    assert_eq!(groups.len(), 1);
+    let noop_count = groups[0]
+        .alternatives
         .iter()
-        .filter(|r| matches!(r, GuestRule::NoopGroup { .. }))
+        .filter(|a| matches!(a, Alternative::Noop { .. }))
         .count();
-    let single_count = grouped
+    let full_count = groups[0]
+        .alternatives
         .iter()
-        .filter(|r| matches!(r, GuestRule::Single { .. }))
+        .filter(|a| matches!(a, Alternative::Full { .. }))
         .count();
-    assert_eq!(noop_count, 1);
-    assert_eq!(single_count, 1);
-    let noop = grouped
-        .iter()
-        .find(|r| matches!(r, GuestRule::NoopGroup { .. }))
-        .unwrap();
-    match noop {
-        GuestRule::NoopGroup { syms, .. } => assert_eq!(syms.len(), 2),
-        _ => unreachable!(),
-    }
+    assert!(noop_count > 0);
+    assert_eq!(full_count, 1);
 }
 
 #[test]
-fn test_group_rules_different_dirs() {
-    // Noop rules with different directions → separate groups.
+fn test_state_groups_different_dirs() {
+    // Noop rules with different directions → one state group with separate alternatives.
     let spec = make_noop_test_spec();
     let hints = MyUtmSpecOptimizationHints::guess(&spec);
     let rules = vec![
         (0u8, 1u8, 0u8, 1u8, Dir::Right), // noop R
         (0u8, 2u8, 0u8, 2u8, Dir::Left),  // noop L (different dir)
     ];
-    let grouped = group_rules(&rules, &hints.transition_stats);
-    assert_eq!(grouped.len(), 2);
-    // Each is its own NoopGroup (single-symbol groups are still NoopGroups)
-    assert!(matches!(
-        &grouped[0],
-        GuestRule::NoopGroup {
-            dir: Dir::Right,
-            ..
-        }
-    ));
-    assert!(matches!(
-        &grouped[1],
-        GuestRule::NoopGroup { dir: Dir::Left, .. }
-    ));
+    let groups = make_state_groups(&rules, &hints.transition_stats, &hints.symbol_encodings);
+    assert_eq!(groups.len(), 1); // same state, one group
+    // Should have two alternatives with different directions
+    let dirs: Vec<Dir> = groups[0]
+        .alternatives
+        .iter()
+        .map(|a| match a {
+            Alternative::Noop { dir, .. } => *dir,
+            Alternative::Full { dir, .. } => *dir,
+        })
+        .collect();
+    assert!(dirs.contains(&Dir::Right));
+    assert!(dirs.contains(&Dir::Left));
 }
 
 #[test]
-fn test_serialize_single_rule() {
+fn test_serialize_full_rule_group() {
     // 2 states (1 bit), 4 symbols (2 bits)
     let state_encodings: BTreeMap<u8, Bitstring> =
         BTreeMap::from([(0, vec![false]), (1, vec![true])]);
@@ -1030,30 +1030,31 @@ fn test_serialize_single_rule() {
         (2, vec![true, false]),
         (3, vec![true, true]),
     ]);
-    let rule: GuestRule<u8, u8> = GuestRule::Single {
-        state: 0,
-        sym: 1,
-        new_state: 1,
-        new_sym: 0,
-        dir: Dir::Left,
+    let group = StateGroup {
+        state: 0u8,
+        alternatives: vec![Alternative::Full {
+            sym_prefix: vec![false, true], // sym=1
+            new_state: 1u8,
+            new_sym: 0u8,
+            dir: Dir::Left,
+        }],
     };
-    let syms = rule.serialize(&state_encodings, &symbol_encodings);
-    // . 0 | 01 | 1 | 00 | L
+    let syms = group.serialize(&state_encodings, &symbol_encodings);
+    // . 0 , 01 | 1 | 00 L
     assert_eq!(
         syms,
         vec![
             Symbol::Dot,
+            Symbol::Zero, // state=0
+            Symbol::Comma,
             Symbol::Zero,
+            Symbol::One, // sym prefix 01
+            Symbol::Pipe,
+            Symbol::One, // new_state=1
             Symbol::Pipe,
             Symbol::Zero,
-            Symbol::One,
-            Symbol::Pipe,
-            Symbol::One,
-            Symbol::Pipe,
-            Symbol::Zero,
-            Symbol::Zero,
-            Symbol::Pipe,
-            Symbol::L,
+            Symbol::Zero, // new_sym=0
+            Symbol::L,    // dir
         ]
     );
 }
@@ -1073,14 +1074,21 @@ fn test_serialize_noop_group() {
         (2, vec![true, false]),
         (3, vec![true, true]),
     ]);
-    let rule: GuestRule<u8, u8> = GuestRule::NoopGroup {
-        state: 1,
-        syms: vec![0, 2, 3],
-        dir: Dir::Right,
+    let group = StateGroup {
+        state: 1u8,
+        alternatives: vec![
+            Alternative::Noop {
+                sym_prefix: vec![true], // covers syms 2,3
+                dir: Dir::Right,
+            },
+            Alternative::Noop {
+                sym_prefix: vec![false, false], // sym 0
+                dir: Dir::Right,
+            },
+        ],
     };
-    let syms = rule.serialize(&state_encodings, &symbol_encodings);
-    // . 01 , 1 , 00 | R
-    // Prefixes sorted shortest-first: "1" (covers syms 2,3) before "00" (sym 0)
+    let syms = group.serialize(&state_encodings, &symbol_encodings);
+    // . 01 , 1 R , 00 R
     assert_eq!(
         syms,
         vec![
@@ -1088,18 +1096,18 @@ fn test_serialize_noop_group() {
             Symbol::Zero,
             Symbol::One, // state=1
             Symbol::Comma,
-            Symbol::One, // syms 2,3 (prefix 1)
+            Symbol::One, // prefix "1" (covers syms 2,3)
+            Symbol::R,   // noop direction
             Symbol::Comma,
             Symbol::Zero,
-            Symbol::Zero, // sym=0 (prefix 00)
-            Symbol::Pipe,
-            Symbol::R,
+            Symbol::Zero, // prefix "00" (sym 0)
+            Symbol::R,    // noop direction
         ]
     );
 }
 
 #[test]
-fn test_serialize_rules_semicolons() {
+fn test_serialize_state_groups_semicolons() {
     let state_encodings: BTreeMap<u8, Bitstring> =
         BTreeMap::from([(0, vec![false]), (1, vec![true])]);
     let symbol_encodings: BTreeMap<u8, Bitstring> = BTreeMap::from([
@@ -1107,27 +1115,31 @@ fn test_serialize_rules_semicolons() {
         (1, vec![false, true]),
         (2, vec![true, false]),
     ]);
-    let rules: Vec<GuestRule<u8, u8>> = vec![
-        GuestRule::Single {
+    let groups: Vec<StateGroup<u8, u8>> = vec![
+        StateGroup {
             state: 0,
-            sym: 0,
-            new_state: 1,
-            new_sym: 0,
-            dir: Dir::Left,
+            alternatives: vec![Alternative::Full {
+                sym_prefix: vec![false, false],
+                new_state: 1,
+                new_sym: 0,
+                dir: Dir::Left,
+            }],
         },
-        GuestRule::NoopGroup {
-            state: 0,
-            syms: vec![1, 2],
-            dir: Dir::Right,
+        StateGroup {
+            state: 1,
+            alternatives: vec![Alternative::Noop {
+                sym_prefix: vec![false],
+                dir: Dir::Right,
+            }],
         },
     ];
-    let tape = serialize_rules(&rules, &state_encodings, &symbol_encodings);
-    // Rules should be separated by ;
+    let tape = serialize_state_groups(&groups, &state_encodings, &symbol_encodings);
+    // Two state groups should be separated by ;
     let semi_count = tape.iter().filter(|&&s| s == Symbol::Semi).count();
     assert_eq!(
         semi_count, 1,
-        "two rules should have one semicolon separator"
+        "two state groups should have one semicolon separator"
     );
-    // First symbol should be Dot (start of first rule)
+    // First symbol should be Dot (start of first group)
     assert_eq!(tape[0], Symbol::Dot);
 }

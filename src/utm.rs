@@ -677,7 +677,6 @@ fn build_utm_rules() -> RuleSet {
     // ══════════════════════════════════════════════════════════════
     r.add(CmpStRead, Zero, CmpStC0, X, Dir::Right);
     r.add(CmpStRead, One, CmpStC1, Y, Dir::Right);
-    r.add(CmpStRead, Pipe, StMatchCleanup, Pipe, Dir::Right);
     r.add(CmpStRead, Comma, StMatchCleanup, Comma, Dir::Right);
 
     for (c_sym, carry, find) in [(Zero, CmpStC0, CmpStC0Find), (One, CmpStC1, CmpStC1Find)] {
@@ -701,7 +700,6 @@ fn build_utm_rules() -> RuleSet {
         scan_right(&mut r, nb, marked_bits);
         r.add(nb, Zero, CmpStC0, X, Dir::Right);
         r.add(nb, One, CmpStC1, Y, Dir::Right);
-        r.add(nb, Pipe, StMatchCleanup, Pipe, Dir::Right);
         r.add(nb, Comma, StMatchCleanup, Comma, Dir::Right);
     }
 
@@ -712,11 +710,9 @@ fn build_utm_rules() -> RuleSet {
         let smc = StMatchCleanup;
         r.add(smc, Zero, StmGoLeft, Zero, Dir::Left);
         r.add(smc, One, StmGoLeft, One, Dir::Left);
-        r.add(smc, Pipe, StmGoLeft, Pipe, Dir::Left);
     }
     {
         let gl = StmGoLeft;
-        r.add(gl, Pipe, StmRestoreRule, Pipe, Dir::Left);
         r.add(gl, Comma, StmRestoreRule, Comma, Dir::Left);
         scan_left(&mut r, gl, bits);
     }
@@ -747,9 +743,8 @@ fn build_utm_rules() -> RuleSet {
     {
         let ss = SymSkipState;
         scan_right(&mut r, ss, bits);
-        r.add(ss, Pipe, CmpSymRead, Pipe, Dir::Right);
-        // Noop rule: mark first comma as Caret to track current alternative
-        r.add(ss, Comma, CmpSymRead, Caret, Dir::Right);
+        // Mark first comma as > to track current alternative
+        r.add(ss, Comma, CmpSymRead, Gt, Dir::Right);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -778,7 +773,6 @@ fn build_utm_rules() -> RuleSet {
         r.add(rr, X, rr, Zero, Dir::Right);
         r.add(rr, Y, rr, One, Dir::Right);
         scan_right(&mut r, rr, bits);
-        r.add(rr, Pipe, StfGoPrev, Pipe, Dir::Left);
         r.add(rr, Comma, StfGoPrev, Comma, Dir::Left);
     }
     {
@@ -792,6 +786,9 @@ fn build_utm_rules() -> RuleSet {
     // ══════════════════════════════════════════════════════════════
     r.add(CmpSymRead, Zero, CmpSymC0, X, Dir::Right);
     r.add(CmpSymRead, One, CmpSymC1, Y, Dir::Right);
+    // Prefix exhausted: L/R = noop match, | = full rule match
+    r.add(CmpSymRead, L, SymMatchCleanup, L, Dir::Right);
+    r.add(CmpSymRead, R, SymMatchCleanup, R, Dir::Right);
     r.add(CmpSymRead, Pipe, SymMatchCleanup, Pipe, Dir::Right);
 
     for c in [0u8, 1u8] {
@@ -826,38 +823,24 @@ fn build_utm_rules() -> RuleSet {
         }
     }
 
-    // Symbol bit matched -> return to * to read next bit
+    // Symbol bit matched -> return to * to read next prefix bit
     {
         seek_star(&mut r, CmpSymOk, CmpSymNextbit);
         let nb = CmpSymNextbit;
-        // For noop rules, scan past commas between alternatives to reach Caret
-        scan_right(&mut r, nb, &[Zero, One, Comma]);
-        r.add(nb, Pipe, CmpSymNb2, Pipe, Dir::Right);
-        // Noop: caret marks current alternative
-        r.add(nb, Caret, NpNextbit, Caret, Dir::Right);
+        // Scan past state bits and prior alternatives' data to > (marks current alternative)
+        scan_right(&mut r, nb, &[Zero, One, Comma, Pipe, L, R]);
+        r.add(nb, Gt, CmpSymNb2, Gt, Dir::Right);
     }
     {
         let nb2 = CmpSymNb2;
+        // Scan past already-matched prefix bits
         scan_right(&mut r, nb2, marked_bits);
         r.add(nb2, Zero, CmpSymC0, X, Dir::Right);
         r.add(nb2, One, CmpSymC1, Y, Dir::Right);
+        // Prefix exhausted: L/R = noop match, | = full rule match
+        r.add(nb2, L, SymMatchCleanup, L, Dir::Right);
+        r.add(nb2, R, SymMatchCleanup, R, Dir::Right);
         r.add(nb2, Pipe, SymMatchCleanup, Pipe, Dir::Right);
-    }
-    // ── Noop: NpNextbit - skip marked bits, read next bit or end-of-symbol
-    {
-        let np = NpNextbit;
-        scan_right(&mut r, np, marked_bits);
-        r.add(np, Zero, CmpSymC0, X, Dir::Right);
-        r.add(np, One, CmpSymC1, Y, Dir::Right);
-        // End of current noop symbol: all bits matched!
-        r.add(np, Comma, NpMatchPre, Comma, Dir::Left);
-        r.add(np, Pipe, NpMatchPre, Pipe, Dir::Left);
-    }
-    // ── Noop match: scan left to Caret, restore to Comma, enter SymMatchCleanup
-    {
-        let mp = NpMatchPre;
-        scan_left(&mut r, mp, marked_bits);
-        r.add(mp, Caret, SymMatchCleanup, Comma, Dir::Right);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -880,38 +863,38 @@ fn build_utm_rules() -> RuleSet {
         seek_star(&mut r, SymfSeekStar, SymfSkipSt);
     }
     {
+        // From *, scan right past state bits and prior alternatives to >
         let ss = SymfSkipSt;
-        // For noop rules, scan past commas to reach Caret (current alternative marker)
-        scan_right(&mut r, ss, &[Zero, One, Comma]);
-        r.add(ss, Pipe, SymfRestSym, Pipe, Dir::Right);
-        // Noop: found current alternative marker
-        r.add(ss, Caret, NpSymfRestore, Comma, Dir::Right);
-    }
-    // ── Noop mismatch: restore current alt marks, try next or deactivate
-    {
-        let nr = NpSymfRestore;
-        r.add(nr, X, nr, Zero, Dir::Right);
-        r.add(nr, Y, nr, One, Dir::Right);
-        scan_right(&mut r, nr, bits);
-        // Next alternative: mark comma as caret, re-enter symbol comparison
-        r.add(nr, Comma, CmpSymRead, Caret, Dir::Right);
-        // No more alternatives: deactivate rule
-        r.add(nr, Pipe, SymfDeactivate, Pipe, Dir::Left);
+        scan_right(&mut r, ss, &[Zero, One, Comma, Pipe, L, R]);
+        // Restore > → , and enter prefix restoration
+        r.add(ss, Gt, SymfRestSym, Comma, Dir::Right);
     }
     {
+        // Restore prefix marks, then skip rest of this alternative
         let rs = SymfRestSym;
         r.add(rs, X, rs, Zero, Dir::Right);
         r.add(rs, Y, rs, One, Dir::Right);
         scan_right(&mut r, rs, bits);
-        r.add(rs, Pipe, SymfDeactivate, Pipe, Dir::Left);
+        // Hit end of prefix: L/R (noop) or | (full rule) — skip rest of alt
+        r.add(rs, L, NpSymfRestore, L, Dir::Right);
+        r.add(rs, R, NpSymfRestore, R, Dir::Right);
+        r.add(rs, Pipe, NpSymfRestore, Pipe, Dir::Right);
     }
     {
+        // Skip remaining alternative data, find next , or ;/#
+        let nr = NpSymfRestore;
+        scan_right(&mut r, nr, &[Zero, One, Pipe, L, R]);
+        // Next alternative: mark comma as >, re-enter symbol comparison
+        r.add(nr, Comma, CmpSymRead, Gt, Dir::Right);
+        // No more alternatives in this group: deactivate
+        r.add(nr, Semi, SymfDeactivate, Semi, Dir::Left);
+        r.add(nr, Hash, SymfDeactivate, Hash, Dir::Left);
+    }
+    {
+        // Scan left to *, deactivate, check accept states
         let da = SymfDeactivate;
-        let mut syms: Vec<Symbol> = bits.to_vec();
-        syms.push(Pipe);
-        syms.push(Comma);
-        scan_left(&mut r, da, &syms);
-        r.add(da, Star, MarkRule, Dot, Dir::Left);
+        scan_left(&mut r, da, &[Zero, One, Pipe, L, R, Comma]);
+        r.add(da, Star, MarkRuleNoMatch, Dot, Dir::Left);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -949,29 +932,22 @@ fn build_utm_rules() -> RuleSet {
         seek_star(&mut r, SmcRestDone, SmcSkipSt);
     }
     {
+        // From *, scan right past state bits and prior alternatives to >
         let ss = SmcSkipSt;
-        scan_right(&mut r, ss, bits);
-        r.add(ss, Pipe, SmcRestSym, Pipe, Dir::Right);
-        // Noop: after cleanup, skip all symbol alternatives to direction
-        r.add(ss, Comma, NpSmcHandler, Comma, Dir::Right);
-    }
-    // ── Noop post-match: restore marks, skip to | and read direction
-    {
-        let h = NpSmcHandler;
-        r.add(h, X, h, Zero, Dir::Right);
-        r.add(h, Y, h, One, Dir::Right);
-        scan_right(&mut r, h, &[Zero, One, Comma]);
-        r.add(h, Pipe, NpReadDir, Pipe, Dir::Right);
+        scan_right(&mut r, ss, &[Zero, One, Comma, Pipe, L, R]);
+        // Keep > as is (needed for navigation during copy phases)
+        r.add(ss, Gt, SmcRestSym, Gt, Dir::Right);
     }
     {
-        r.add(NpReadDir, L, MoveLeft, L, Dir::Left);
-        r.add(NpReadDir, R, MoveRight, R, Dir::Left);
-    }
-    {
+        // Restore prefix marks, then branch on L/R (noop) or | (full rule)
         let rs = SmcRestSym;
         r.add(rs, X, rs, Zero, Dir::Right);
         r.add(rs, Y, rs, One, Dir::Right);
         scan_right(&mut r, rs, bits);
+        // Noop match: go directly to move head
+        r.add(rs, L, MoveLeft, L, Dir::Left);
+        r.add(rs, R, MoveRight, R, Dir::Left);
+        // Full rule match: start copying new state
         r.add(rs, Pipe, ApplyReadNst, Pipe, Dir::Right);
     }
 
@@ -1001,11 +977,13 @@ fn build_utm_rules() -> RuleSet {
         seek_star(&mut r, CpNstRet, CpNstNext);
     }
     {
+        // From *, scan past state bits and prior alternatives to >
         let n = CpNstNext;
-        scan_right(&mut r, n, bits);
-        r.add(n, Pipe, CpNstNext2, Pipe, Dir::Right);
+        scan_right(&mut r, n, &[Zero, One, Comma, Pipe, L, R]);
+        r.add(n, Gt, CpNstNext2, Gt, Dir::Right);
     }
     {
+        // Scan past prefix bits to |
         let n2 = CpNstNext2;
         scan_right(&mut r, n2, bits);
         r.add(n2, Pipe, CpNstNext3, Pipe, Dir::Right);
@@ -1047,16 +1025,19 @@ fn build_utm_rules() -> RuleSet {
     // PHASE 5: COPY NEW SYMBOL
     // ══════════════════════════════════════════════════════════════
     {
+        // From *, scan past state bits and prior alternatives to >
         let n = CpNsymNav;
-        scan_right(&mut r, n, bits);
-        r.add(n, Pipe, CpNsymNav2, Pipe, Dir::Right);
+        scan_right(&mut r, n, &[Zero, One, Comma, Pipe, L, R]);
+        r.add(n, Gt, CpNsymNav2, Gt, Dir::Right);
     }
     {
+        // Scan past prefix bits to | (end of prefix)
         let n2 = CpNsymNav2;
         scan_right(&mut r, n2, bits);
         r.add(n2, Pipe, CpNsymNav3, Pipe, Dir::Right);
     }
     {
+        // Scan past new_state bits to | (end of new_state)
         let n3 = CpNsymNav3;
         scan_right(&mut r, n3, bits);
         r.add(n3, Pipe, CpNsymRead, Pipe, Dir::Right);
@@ -1095,26 +1076,32 @@ fn build_utm_rules() -> RuleSet {
         seek_star(&mut r, CpNsymRet, CpNsymFnext);
     }
     {
+        // From *, scan past state bits and prior alternatives to >
         let fn_ = CpNsymFnext;
-        scan_right(&mut r, fn_, bits);
-        r.add(fn_, Pipe, CpNsymFn2, Pipe, Dir::Right);
+        scan_right(&mut r, fn_, &[Zero, One, Comma, Pipe, L, R]);
+        r.add(fn_, Gt, CpNsymFn2, Gt, Dir::Right);
     }
     {
+        // Scan past prefix bits to | (end of prefix)
         let fn2 = CpNsymFn2;
         scan_right(&mut r, fn2, bits);
         r.add(fn2, Pipe, CpNsymFn3, Pipe, Dir::Right);
     }
     {
+        // Scan past new_state bits to | (end of new_state)
         let fn3 = CpNsymFn3;
         scan_right(&mut r, fn3, bits);
         r.add(fn3, Pipe, CpNsymFn4, Pipe, Dir::Right);
     }
     {
+        // Scan past already-marked new_sym bits, read next or done
         let fn4 = CpNsymFn4;
         scan_right(&mut r, fn4, marked_bits);
         r.add(fn4, Zero, CpNsymC0, X, Dir::Right);
         r.add(fn4, One, CpNsymC1, Y, Dir::Right);
-        r.add(fn4, Pipe, CpNsymDone, Pipe, Dir::Left);
+        // In new format, dir follows new_sym directly (no | separator)
+        r.add(fn4, L, CpNsymDone, L, Dir::Left);
+        r.add(fn4, R, CpNsymDone, R, Dir::Left);
     }
 
     // cp_nsym_done: restore newsym field and head cell
@@ -1161,28 +1148,29 @@ fn build_utm_rules() -> RuleSet {
         seek_star(&mut r, ReadDir, RdSkipToDir);
     }
     {
+        // From *, scan past state bits and prior alternatives to >
         let sk = RdSkipToDir;
-        scan_right(&mut r, sk, bits);
-        r.add(sk, Pipe, RdSk2, Pipe, Dir::Right);
+        scan_right(&mut r, sk, &[Zero, One, Comma, Pipe, L, R]);
+        r.add(sk, Gt, RdSk2, Gt, Dir::Right);
     }
     {
+        // Scan past prefix bits to | (end of prefix)
         let sk2 = RdSk2;
         scan_right(&mut r, sk2, bits);
         r.add(sk2, Pipe, RdSk3, Pipe, Dir::Right);
     }
     {
+        // Scan past new_state bits to | (end of new_state)
         let sk3 = RdSk3;
         scan_right(&mut r, sk3, bits);
         r.add(sk3, Pipe, RdSk4, Pipe, Dir::Right);
     }
     {
+        // Scan past new_sym bits to L/R (direction)
         let sk4 = RdSk4;
         scan_right(&mut r, sk4, bits);
-        r.add(sk4, Pipe, RdRead, Pipe, Dir::Right);
-    }
-    {
-        r.add(RdRead, L, MoveLeft, L, Dir::Left);
-        r.add(RdRead, R, MoveRight, R, Dir::Left);
+        r.add(sk4, L, MoveLeft, L, Dir::Left);
+        r.add(sk4, R, MoveRight, R, Dir::Left);
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -1193,6 +1181,8 @@ fn build_utm_rules() -> RuleSet {
         let mut syms: Vec<Symbol> = bits.to_vec();
         syms.extend_from_slice(&[Pipe, L, R, Comma]);
         scan_left(&mut r, mr, &syms);
+        // Restore > → , while scanning left to *
+        r.add(mr, Gt, mr, Comma, Dir::Left);
         r.add(mr, Star, MrNav, Dot, Dir::Right);
     }
     {
@@ -1306,6 +1296,8 @@ fn build_utm_rules() -> RuleSet {
         let mut syms: Vec<Symbol> = bits.to_vec();
         syms.extend_from_slice(&[Pipe, L, R, Comma]);
         scan_left(&mut r, ml, &syms);
+        // Restore > → , while scanning left to *
+        r.add(ml, Gt, ml, Comma, Dir::Left);
         r.add(ml, Star, MlNav, Dot, Dir::Right);
     }
     {
@@ -1645,7 +1637,7 @@ pub fn run_until_inner_step<Spec: UtmSpec>(
 #[derive(Clone)]
 pub struct MyUtmSpecOptimizationHints<'a, Guest: 'a + TuringMachineSpec> {
     pub guest: &'a Guest,
-    pub rules: Vec<GuestRule<Guest::State, Guest::Symbol>>,
+    pub rules: Vec<StateGroup<Guest::State, Guest::Symbol>>,
     pub state_encodings: BTreeMap<Guest::State, Bitstring>,
     pub symbol_encodings: BTreeMap<Guest::Symbol, Bitstring>,
     pub transition_stats: BTreeMap<(Guest::State, Guest::Symbol), usize>,
@@ -1661,8 +1653,6 @@ impl<'a, Guest: 'a + TuringMachineSpec> Encoder<'a, Symbol, Guest>
         if self.symbol_encodings.len() != guest.spec.iter_symbols().count() {
             panic!("symbol encodings length mismatch");
         }
-
-        let all_rules: Vec<_> = guest.spec.iter_rules().collect();
 
         let mut tape: Vec<Symbol> = Vec::new();
         tape.push(Symbol::Dollar);
@@ -1688,11 +1678,10 @@ impl<'a, Guest: 'a + TuringMachineSpec> Encoder<'a, Symbol, Guest>
             &self.symbol_encodings[&guest.spec.blank()],
         ));
 
-        // RULES section: # .rule1 ; .rule2 ; .rule3 ...
+        // RULES section: # .st1,alt1,alt2 ; .st2,alt3 ...
         tape.push(Symbol::Hash);
-        let guest_rules = group_rules(&all_rules, &self.transition_stats);
-        tape.extend(serialize_rules(
-            &guest_rules,
+        tape.extend(serialize_state_groups(
+            &self.rules,
             &self.state_encodings,
             &self.symbol_encodings,
         ));
@@ -1796,20 +1785,24 @@ impl<'a, Guest: 'a + TuringMachineSpec> MyUtmSpecOptimizationHints<'a, Guest> {
         guest: &'a Guest,
         transition_stats: &BTreeMap<(Guest::State, Guest::Symbol), usize>,
     ) -> Self {
-        let rules = group_rules(&guest.iter_rules().collect::<Vec<_>>(), transition_stats);
-
         let n_state_bits = num_bits(guest.iter_states().count());
         let n_sym_bits = num_bits(guest.iter_symbols().count());
-        let state_encodings = guest
+        let state_encodings: BTreeMap<Guest::State, Bitstring> = guest
             .iter_states()
             .enumerate()
             .map(|(i, s)| (s, to_binary(i, n_state_bits)))
             .collect();
-        let symbol_encodings = guest
+        let symbol_encodings: BTreeMap<Guest::Symbol, Bitstring> = guest
             .iter_symbols()
             .enumerate()
             .map(|(i, s)| (s, to_binary(i, n_sym_bits)))
             .collect();
+
+        let rules = make_state_groups(
+            &guest.iter_rules().collect::<Vec<_>>(),
+            transition_stats,
+            &symbol_encodings,
+        );
 
         Self {
             guest,
@@ -1821,22 +1814,25 @@ impl<'a, Guest: 'a + TuringMachineSpec> MyUtmSpecOptimizationHints<'a, Guest> {
     }
 }
 
-/// A rule in the encoded guest program, using encoded indices.
+/// A group of rules sharing the same state, encoded as:
+/// `. state , prefix1 ACTION1 , prefix2 ACTION2 , ... ;`
+/// where ACTION is either `DIR` (noop) or `| new_state | new_sym DIR` (full rule).
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum GuestRule<GState, GSymbol> {
-    /// Normal rule: state | sym | new_state | new_sym | dir
-    Single {
-        state: GState,
-        sym: GSymbol,
+pub struct StateGroup<GState, GSymbol> {
+    pub state: GState,
+    pub alternatives: Vec<Alternative<GState, GSymbol>>,
+}
+
+/// An alternative within a state group.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Alternative<GState, GSymbol> {
+    /// Noop: symbol prefix + direction. State and symbol unchanged.
+    Noop { sym_prefix: Bitstring, dir: Dir },
+    /// Full rule: symbol prefix + new state + new symbol + direction.
+    Full {
+        sym_prefix: Bitstring,
         new_state: GState,
         new_sym: GSymbol,
-        dir: Dir,
-    },
-    /// Compact noop rule: state , sym1 , sym2 , ... | dir
-    /// All listed symbols leave state and symbol unchanged, just move.
-    NoopGroup {
-        state: GState,
-        syms: Vec<GSymbol>,
         dir: Dir,
     },
 }
@@ -1897,132 +1893,138 @@ fn compress_prefixes_rec(
     }
 }
 
-impl<GState: Eq + Ord + Copy, GSymbol: Eq + Ord + Copy> GuestRule<GState, GSymbol> {
-    /// Serialize this rule into UTM tape symbols.
+impl<GState: Eq + Ord + Copy, GSymbol: Eq + Ord + Copy> StateGroup<GState, GSymbol> {
+    /// Serialize this state group into UTM tape symbols.
+    /// Format: `. state , prefix1 ACTION1 , prefix2 ACTION2 , ...`
     pub fn serialize(
         &self,
         state_encodings: &BTreeMap<GState, Bitstring>,
-        symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
+        _symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
     ) -> Vec<Symbol> {
         let mut out = Vec::new();
-        match self {
-            GuestRule::Single {
-                state,
-                sym,
-                new_state,
-                new_sym,
-                dir,
-            } => {
-                out.push(Symbol::Dot);
-                out.extend(bitstring_to_symbols(&state_encodings[state]));
-                out.push(Symbol::Pipe);
-                out.extend(bitstring_to_symbols(&symbol_encodings[sym]));
-                out.push(Symbol::Pipe);
-                out.extend(bitstring_to_symbols(&state_encodings[new_state]));
-                out.push(Symbol::Pipe);
-                out.extend(bitstring_to_symbols(&symbol_encodings[new_sym]));
-                out.push(Symbol::Pipe);
-                out.push(match dir {
-                    Dir::Left => Symbol::L,
-                    Dir::Right => Symbol::R,
-                });
-            }
-            GuestRule::NoopGroup { state, syms, dir } => {
-                out.push(Symbol::Dot);
-                out.extend(bitstring_to_symbols(&state_encodings[state]));
-                let prefixes = compress_prefixes(syms, symbol_encodings);
-                for prefix in &prefixes {
-                    out.push(Symbol::Comma);
-                    out.extend(bitstring_to_symbols(prefix));
+        out.push(Symbol::Dot);
+        out.extend(bitstring_to_symbols(&state_encodings[&self.state]));
+        for alt in &self.alternatives {
+            out.push(Symbol::Comma);
+            match alt {
+                Alternative::Noop { sym_prefix, dir } => {
+                    out.extend(bitstring_to_symbols(sym_prefix));
+                    out.push(match dir {
+                        Dir::Left => Symbol::L,
+                        Dir::Right => Symbol::R,
+                    });
                 }
-                out.push(Symbol::Pipe);
-                out.push(match dir {
-                    Dir::Left => Symbol::L,
-                    Dir::Right => Symbol::R,
-                });
+                Alternative::Full {
+                    sym_prefix,
+                    new_state,
+                    new_sym,
+                    dir,
+                } => {
+                    out.extend(bitstring_to_symbols(sym_prefix));
+                    out.push(Symbol::Pipe);
+                    out.extend(bitstring_to_symbols(&state_encodings[new_state]));
+                    out.push(Symbol::Pipe);
+                    out.extend(bitstring_to_symbols(
+                        &_symbol_encodings[new_sym],
+                    ));
+                    out.push(match dir {
+                        Dir::Left => Symbol::L,
+                        Dir::Right => Symbol::R,
+                    });
+                }
             }
         }
         out
     }
 }
 
-/// Serialize a list of GuestRules into the RULES section content (without surrounding #).
-pub fn serialize_rules<GState: Eq + Copy + Ord, GSymbol: Eq + Copy + Ord>(
-    rules: &[GuestRule<GState, GSymbol>],
+/// Serialize a list of StateGroups into the RULES section content (without surrounding #).
+pub fn serialize_state_groups<GState: Eq + Copy + Ord, GSymbol: Eq + Copy + Ord>(
+    groups: &[StateGroup<GState, GSymbol>],
     state_encodings: &BTreeMap<GState, Bitstring>,
     symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
 ) -> Vec<Symbol> {
     let mut tape = Vec::new();
-    for (i, rule) in rules.iter().enumerate() {
+    for (i, group) in groups.iter().enumerate() {
         if i > 0 {
             tape.push(Symbol::Semi);
         }
-        tape.extend(rule.serialize(state_encodings, symbol_encodings));
+        tape.extend(group.serialize(state_encodings, symbol_encodings));
     }
     tape
 }
 
-/// Group guest rules into GuestRules, consolidating noops, and sort by transition frequency.
+/// Group guest rules into StateGroups, consolidating noops with prefix compression.
 ///
-/// A noop rule is one where new_state == state and new_sym == sym.
-/// Noop rules for the same (state, direction) are grouped into a single NoopGroup.
-/// The resulting Vec is sorted by ascending sum of transition stat counts,
-/// so the UTM (which scans rules right-to-left) finds frequent rules first.
-pub fn group_rules<GState, GSymbol>(
+/// Rules are grouped by state. Within each state group:
+/// - Noop rules (new_state == state, new_sym == sym) with the same direction are
+///   prefix-compressed into compact alternatives.
+/// - Non-noop rules each get their own alternative with full symbol encoding.
+///
+/// State groups are sorted ascending by total transition count (most-used rightmost,
+/// found first by UTM scanning right-to-left).
+/// Alternatives within a group are sorted descending by count (most-used first,
+/// found first by UTM scanning left-to-right).
+pub fn make_state_groups<GState, GSymbol>(
     rules: &[(GState, GSymbol, GState, GSymbol, Dir)],
     transition_stats: &BTreeMap<(GState, GSymbol), usize>,
-) -> Vec<GuestRule<GState, GSymbol>>
+    symbol_encodings: &BTreeMap<GSymbol, Bitstring>,
+) -> Vec<StateGroup<GState, GSymbol>>
 where
     GState: Eq + Ord + Copy,
     GSymbol: Eq + Ord + Copy,
 {
-    // Identify noop rules and group by (state_encoding, dir)
-    let mut noop_groups: BTreeMap<(GState, Dir), Vec<GSymbol>> = BTreeMap::new();
-    let mut noop_set: BTreeSet<(GState, GSymbol)> = BTreeSet::new();
-    // Track Guest-typed keys per noop group for stat lookups
-    let mut noop_group_keys: BTreeMap<(GState, Dir), Vec<(GState, GSymbol)>> = BTreeMap::new();
-
+    // Group rules by state
+    let mut by_state: BTreeMap<GState, Vec<(GSymbol, GState, GSymbol, Dir)>> = BTreeMap::new();
     for &(st, sym, nst, nsym, dir) in rules {
-        if nst == st && nsym == sym {
-            noop_groups.entry((st, dir)).or_default().push(sym);
-            noop_set.insert((st, sym));
-            noop_group_keys
-                .entry((st, dir))
-                .or_default()
-                .push((st, sym));
-        }
+        by_state.entry(st).or_default().push((sym, nst, nsym, dir));
     }
 
-    // Build result: one entry per noop group, one per non-noop rule
-    let mut emitted_noop_groups: BTreeSet<(GState, Dir)> = BTreeSet::new();
-    let mut result: Vec<(GuestRule<GState, GSymbol>, usize)> = Vec::new();
+    let mut groups: Vec<(StateGroup<GState, GSymbol>, usize)> = Vec::new();
 
-    for &(st, sym, nst, nsym, dir) in rules {
-        let count = *transition_stats.get(&(st, sym)).unwrap_or(&0);
-        if noop_set.contains(&(st, sym)) {
-            let key = (st, dir);
-            if emitted_noop_groups.contains(&key) {
+    for (state, state_rules) in &by_state {
+        let mut alternatives: Vec<(Alternative<GState, GSymbol>, usize)> = Vec::new();
+
+        // Identify noops and group by direction
+        let mut noop_by_dir: BTreeMap<Dir, Vec<GSymbol>> = BTreeMap::new();
+        let mut noop_set: BTreeSet<GSymbol> = BTreeSet::new();
+
+        for &(sym, nst, nsym, dir) in state_rules {
+            if nst == *state && nsym == sym {
+                noop_by_dir.entry(dir).or_default().push(sym);
+                noop_set.insert(sym);
+            }
+        }
+
+        // Create noop alternatives (prefix-compressed)
+        for (dir, syms) in &noop_by_dir {
+            let prefixes = compress_prefixes(syms, symbol_encodings);
+            for prefix in &prefixes {
+                let prefix_count: usize = syms
+                    .iter()
+                    .filter(|s| symbol_encodings[s].starts_with(prefix))
+                    .map(|s| *transition_stats.get(&(*state, *s)).unwrap_or(&0))
+                    .sum();
+                alternatives.push((
+                    Alternative::Noop {
+                        sym_prefix: prefix.clone(),
+                        dir: *dir,
+                    },
+                    prefix_count,
+                ));
+            }
+        }
+
+        // Create full alternatives (non-noop)
+        for &(sym, nst, nsym, dir) in state_rules {
+            if noop_set.contains(&sym) {
                 continue;
             }
-            emitted_noop_groups.insert(key);
-            let syms = noop_groups[&key].clone();
-            let group_count: usize = noop_group_keys[&key]
-                .iter()
-                .map(|k| transition_stats.get(k).unwrap_or(&0))
-                .sum();
-            result.push((
-                GuestRule::NoopGroup {
-                    state: st,
-                    syms,
-                    dir,
-                },
-                group_count,
-            ));
-        } else {
-            result.push((
-                GuestRule::Single {
-                    state: st,
-                    sym: sym,
+            let count = *transition_stats.get(&(*state, sym)).unwrap_or(&0);
+            let sym_prefix = symbol_encodings[&sym].clone();
+            alternatives.push((
+                Alternative::Full {
+                    sym_prefix,
                     new_state: nst,
                     new_sym: nsym,
                     dir,
@@ -2030,11 +2032,24 @@ where
                 count,
             ));
         }
+
+        // Sort alternatives descending by count (most frequent first, found first left-to-right)
+        alternatives.sort_by(|a, b| b.1.cmp(&a.1));
+
+        let total_count: usize = alternatives.iter().map(|(_, c)| *c).sum();
+
+        groups.push((
+            StateGroup {
+                state: *state,
+                alternatives: alternatives.into_iter().map(|(a, _)| a).collect(),
+            },
+            total_count,
+        ));
     }
 
-    // Sort ascending by count so most-used rules end up rightmost (found first by UTM)
-    result.sort_by_key(|&(_, count)| count);
-    result.into_iter().map(|(rule, _)| rule).collect()
+    // Sort groups ascending by total count (most-used rightmost, found first by UTM)
+    groups.sort_by_key(|&(_, count)| count);
+    groups.into_iter().map(|(g, _)| g).collect()
 }
 
 pub fn make_utm_spec() -> MyUtmSpec {
