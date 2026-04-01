@@ -238,7 +238,11 @@ export function WelcomeModal() {
                   <li>
                     <code>RULES</code> is a list of the simulated machine's
                     state transitions. Each one is of the form{" "}
-                    <code>.STATE|SYMBOL|NEWSTATE|NEWSYMBOL|DIR;</code>.
+                    <code>
+                      .STATE,SYMBOL|NEWSTATE|NEWSYMBOL
+                      DIR,SYMBOL|NEWSTATE|NEWSYMBOL DIR,...;
+                    </code>
+                    .
                   </li>
                   <li>
                     <code>STATE</code> is the simulated machine's current state.
@@ -319,12 +323,12 @@ export function WelcomeModal() {
           state/symbols as binary; it tracks the simulated machine's state (the{" "}
           <code>#0#</code> means "in state 0"); and it tracks the simulated
           machine's head (the <code>^</code>). It has a description of all the
-          simulated machine's transition rules e.g. <code>.0|10|0|01|R;</code>{" "}
-          ("in state 0, if you see symbol 10, then stay in state 0, write symbol
-          01, and move right"), and it goes through them one by one to see which
-          is applicable to the current state/symbol, then copies over the
-          applied rule's new state/symbol and moves the machine's simulated
-          head.
+          simulated machine's transition rules e.g.{" "}
+          <code>.0,10|0|01R,01|0|10R;</code> ("in state 0: if you see symbol 10,
+          then stay in state 0, write symbol 01, and move right; if you see
+          symbol 01, ..."), and it goes through them one by one to see which is
+          applicable to the current state/symbol, then copies over the applied
+          rule's new state/symbol and moves the machine's simulated head.
         </p>
 
         <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
@@ -354,32 +358,20 @@ export function WelcomeModal() {
 
             <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
               If you look closely at this UTM's looooong rules section, you'll
-              notice not all the rules have the same format.{" "}
-              <code>.10100001|0010|10100001|0000|R;</code>
+              notice some... quirks.{" "}
+              <code>.10011101,0000|10011111|0000L,0001|10011111|0001L;</code>
               should look familiar, the same format as the bit-flipper rules;
-              but <code>.01011101,0,1000,1011,1101|R;</code> is new.
+              but <code>.00101100,0R, ...</code> is new.
             </p>
 
             <p style={{ marginBottom: "16px", lineHeight: "1.6" }}>
               This is because -- and I cannot believe I am writing this -- I did
-              some performance optimization on the UTM.
-              <ol>
-                <li>
-                  <code>.STATE,SYM,SYM,SYM|DIR;</code> means "if you're in state
-                  STATE, and you see any of these SYMbols, don't change state,
-                  don't overwrite the symbol, just move DIR."
-                </li>
-                <li>
-                  ...and also, those <code>SYM</code>s are actually{" "}
-                  <i>prefixes</i> -- a SYM of <code>0</code> means "any symbol
-                  whose binary representation starting with 0."
-                </li>
-              </ol>
-              Together, those tricks greatly reduce the number of
-              bit-comparisons the UTM needs to do in order to find the
-              applicable rule, when the simulated TM is in a state where it's
-              scanning through the tape looking for a particular symbol. (Which,
-              recall, is how the UTM spends most of its time.)
+              some performance optimization on the UTM. <code>0R</code> means
+              "if you see <i>any</i>symbol starting with 0, don't change state
+              or overwrite the symbol, just move right." The UTM spends a lot of
+              its time scanning back and forth through the tape, looking for a
+              particular symbol, and this shorthand makes it a lot faster for
+              the UTM to find the rule applicable to a machine doing that.
             </p>
           </details>
 
